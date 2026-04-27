@@ -57,7 +57,7 @@ export type ProductStatus = (typeof ProductStatus)[keyof typeof ProductStatus]
 
 export const OrderStatus = {
   DRAFT: 'DRAFT',
-  PLACED: 'PLACED',
+  PENDING: 'PENDING',
   ACCEPTED: 'ACCEPTED',
   PREPARING: 'PREPARING',
   READY_FOR_PICKUP: 'READY_FOR_PICKUP',
@@ -81,6 +81,7 @@ export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod]
 
 export const PaymentStatus = {
   PENDING: 'PENDING',
+  MANUAL_CASH_ON_DELIVERY: 'MANUAL_CASH_ON_DELIVERY',
   AUTHORIZED: 'AUTHORIZED',
   PAID: 'PAID',
   FAILED: 'FAILED',

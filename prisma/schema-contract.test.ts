@@ -1,22 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 
 const schema = readFileSync("prisma/schema.prisma", "utf8");
-const initMigration = readFileSync(
-  "prisma/migrations/00000000000000_init/migration.sql",
-  "utf8",
+const migrations = readdirSync("prisma/migrations", { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => ({
+    name: entry.name,
+    sql: readFileSync(join("prisma/migrations", entry.name, "migration.sql"), "utf8"),
+  }))
+  .sort((left, right) => left.name.localeCompare(right.name));
+const migration = migrations.map(({ sql }) => sql).join("\n\n");
+const statusContractMigration = migrationByName(
+  "00000000000001_establishment_status_contract",
 );
-const statusContractMigration = readFileSync(
-  "prisma/migrations/00000000000001_establishment_status_contract/migration.sql",
-  "utf8",
+const logoUrlMigration = migrationByName("00000000000002_establishment_logo_url");
+const orderPaymentContractMigration = migrationByName(
+  "00000000000003_order_payment_contract",
 );
-const logoUrlMigration = readFileSync(
-  "prisma/migrations/00000000000002_establishment_logo_url/migration.sql",
-  "utf8",
-);
-const migration = `${initMigration}\n\n${statusContractMigration}\n\n${logoUrlMigration}`;
 const dbClient = readFileSync("src/server/db.ts", "utf8");
 const prismaConfig = readFileSync("prisma.config.ts", "utf8");
+const generatedClient = readFileSync("src/generated/prisma/client.ts", "utf8");
+const generatedEnums = readFileSync("src/generated/prisma/enums.ts", "utf8");
+const generatedOrder = readFileSync("src/generated/prisma/models/Order.ts", "utf8");
+const generatedPayment = readFileSync("src/generated/prisma/models/Payment.ts", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   scripts: Record<string, string>;
 };
@@ -46,6 +54,10 @@ const requiredEnums = [
   "MonthlyBillingStatus",
 ];
 
+function migrationByName(name: string) {
+  return migrations.find((candidate) => candidate.name === name)?.sql ?? "";
+}
+
 function tableDefinition(tableName: string) {
   const match = migration.match(
     new RegExp(`CREATE TABLE "${tableName}" \\([\\s\\S]*?\\n\\);`),
@@ -70,7 +82,29 @@ function enumValues(enumName: string) {
     .filter((line) => line.length > 0 && !line.startsWith("//"));
 }
 
+function envWithoutDatabaseUrl() {
+  const env = { ...process.env };
+  env.DATABASE_URL = "";
+
+  return env;
+}
+
 describe("Prisma database foundation contract", () => {
+  it("loads every migration in sorted order for drift-sensitive contract checks", () => {
+    const migrationNames = migrations.map(({ name }) => name);
+
+    expect(migrationNames).toEqual([...migrationNames].sort());
+    expect(migrationNames).toContain("00000000000000_init");
+    expect(migrationNames).toContain(
+      "00000000000001_establishment_status_contract",
+    );
+    expect(migrationNames).toContain("00000000000002_establishment_logo_url");
+    expect(migrationNames).toContain("00000000000003_order_payment_contract");
+    expect(orderPaymentContractMigration).toContain(
+      "-- S01 order/payment contract",
+    );
+  });
+
   it("declares the required models, enums, and explicit generated client output", () => {
     for (const model of requiredModels) {
       expect(schema).toContain(`model ${model} {`);
@@ -87,12 +121,15 @@ describe("Prisma database foundation contract", () => {
       'import { PrismaClient } from "@/generated/prisma/client";',
     );
     expect(dbClient).toContain("globalForPrisma.prisma ?? createPrismaClient()");
+    expect(generatedClient).toContain("export const PrismaClient");
   });
 
   it("keeps DB-mutating scripts behind a secret-safe DATABASE_URL preflight", () => {
     expect(prismaConfig).toContain('import "dotenv/config";');
     expect(prismaConfig).toContain('seed: "tsx prisma/seed.ts"');
     expect(prismaConfig).toContain('env("DATABASE_URL")');
+    expect(prismaConfig).toContain("schemaOnlyPlaceholderUrl");
+    expect(packageJson.scripts["db:generate"]).toBe("prisma generate");
     expect(packageJson.scripts["db:deploy"]).toContain(
       "node scripts/require-env.mjs DATABASE_URL && prisma migrate deploy",
     );
@@ -102,6 +139,23 @@ describe("Prisma database foundation contract", () => {
     expect(packageJson.scripts["db:seed"]).toContain(
       "node scripts/require-env.mjs DATABASE_URL && tsx prisma/seed.ts",
     );
+  });
+
+  it("fails the db:deploy preflight before Prisma when DATABASE_URL is missing without leaking secrets", () => {
+    const result = spawnSync(
+      process.execPath,
+      ["scripts/require-env.mjs", "DATABASE_URL"],
+      {
+        encoding: "utf8",
+        env: envWithoutDatabaseUrl(),
+      },
+    );
+    const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
+
+    expect(result.status).not.toBe(0);
+    expect(output).toBe("Missing required environment variable(s): DATABASE_URL");
+    expect(output).not.toMatch(/postgres(?:ql)?:\/\//i);
+    expect(output).not.toMatch(/prisma/i);
   });
 
   it("aligns establishment statuses with approval semantics without changing product draft statuses", () => {
@@ -158,6 +212,177 @@ describe("Prisma database foundation contract", () => {
     );
   });
 
+  it("evolves order and payment enums through rename/additive-compatible migration SQL", () => {
+    expect(enumValues("OrderStatus")).toEqual([
+      "DRAFT",
+      "PENDING",
+      "ACCEPTED",
+      "PREPARING",
+      "READY_FOR_PICKUP",
+      "OUT_FOR_DELIVERY",
+      "DELIVERED",
+      "CANCELED",
+    ]);
+    expect(enumValues("OrderStatus")).not.toContain("PLACED");
+    expect(enumValues("PaymentMethod")).toEqual(["CASH", "PIX", "CARD", "FAKE"]);
+    expect(enumValues("PaymentStatus")).toEqual([
+      "PENDING",
+      "MANUAL_CASH_ON_DELIVERY",
+      "AUTHORIZED",
+      "PAID",
+      "FAILED",
+      "REFUNDED",
+      "CANCELED",
+    ]);
+
+    expect(orderPaymentContractMigration).toContain(
+      'ALTER TYPE "OrderStatus" RENAME VALUE \'PLACED\' TO \'PENDING\';',
+    );
+    expect(orderPaymentContractMigration).toContain(
+      'ALTER TYPE "PaymentStatus" ADD VALUE IF NOT EXISTS \'MANUAL_CASH_ON_DELIVERY\';',
+    );
+    expect(orderPaymentContractMigration).not.toMatch(/DROP\s+TYPE\s+"OrderStatus"/i);
+    expect(orderPaymentContractMigration).not.toMatch(/DROP\s+TYPE\s+"PaymentMethod"/i);
+    expect(orderPaymentContractMigration).not.toMatch(/DROP\s+TYPE\s+"PaymentStatus"/i);
+  });
+
+  it("exposes public order code, required customer relation, detailed delivery and order payment summaries", () => {
+    const orders = modelDefinition("Order");
+
+    expect(orders).toMatch(/publicCode\s+String\s+@unique\s+@map\("public_code"\)\s+@db\.Text/);
+    expect(orders).not.toMatch(/\n\s+code\s+String/);
+    expect(orders).toMatch(/customerId\s+String\s+@map\("customer_id"\)\s+@db\.Text/);
+    expect(orders).toMatch(
+      /customer\s+User\s+@relation\("CustomerOrders", fields: \[customerId\], references: \[id\], onDelete: Restrict\)/,
+    );
+
+    for (const field of [
+      /deliveryStreet\s+String\s+@map\("delivery_street"\)\s+@db\.Text/,
+      /deliveryNumber\s+String\s+@map\("delivery_number"\)\s+@db\.Text/,
+      /deliveryComplement\s+String\?\s+@map\("delivery_complement"\)\s+@db\.Text/,
+      /deliveryNeighborhood\s+String\s+@map\("delivery_neighborhood"\)\s+@db\.Text/,
+      /deliveryCity\s+String\s+@map\("delivery_city"\)\s+@db\.Text/,
+      /deliveryState\s+String\s+@map\("delivery_state"\)\s+@db\.Text/,
+      /deliveryPostalCode\s+String\s+@map\("delivery_postal_code"\)\s+@db\.Text/,
+      /deliveryReference\s+String\?\s+@map\("delivery_reference"\)\s+@db\.Text/,
+      /generalObservation\s+String\?\s+@map\("general_observation"\)\s+@db\.Text/,
+      /paymentMethod\s+PaymentMethod\s+@map\("payment_method"\)/,
+      /paymentStatus\s+PaymentStatus\s+@map\("payment_status"\)/,
+    ]) {
+      expect(orders).toMatch(field);
+    }
+
+    expect(orders).toContain("@@index([paymentStatus])");
+    expect(orders).toContain("@@index([establishmentId, paymentStatus])");
+    expect(orderPaymentContractMigration).toContain(
+      'ALTER TABLE "orders" RENAME COLUMN "code" TO "public_code";',
+    );
+    expect(orderPaymentContractMigration).toContain(
+      'ALTER INDEX "orders_code_key" RENAME TO "orders_public_code_key";',
+    );
+    expect(orderPaymentContractMigration).toContain(
+      'ALTER TABLE "orders" ALTER COLUMN "customer_id" SET NOT NULL;',
+    );
+    expect(orderPaymentContractMigration).toContain(
+      'ON DELETE RESTRICT ON UPDATE CASCADE;',
+    );
+
+    for (const requiredColumn of [
+      '"delivery_street" TEXT NOT NULL',
+      '"delivery_number" TEXT NOT NULL',
+      '"delivery_neighborhood" TEXT NOT NULL',
+      '"delivery_city" TEXT NOT NULL',
+      '"delivery_state" TEXT NOT NULL',
+      '"delivery_postal_code" TEXT NOT NULL',
+      '"payment_method" "PaymentMethod" NOT NULL',
+      '"payment_status" "PaymentStatus" NOT NULL',
+    ]) {
+      expect(orderPaymentContractMigration).toContain(requiredColumn);
+      expect(orderPaymentContractMigration).not.toContain(`${requiredColumn} DEFAULT`);
+    }
+
+    expect(migration).toContain(
+      'CREATE INDEX "orders_payment_status_idx" ON "orders"("payment_status");',
+    );
+    expect(migration).toContain(
+      'CREATE INDEX "orders_establishment_id_payment_status_idx" ON "orders"("establishment_id", "payment_status");',
+    );
+  });
+
+  it("exposes provider, PIX and card-ready payment fields plus payment status/provider indexes", () => {
+    const payments = modelDefinition("Payment");
+
+    for (const field of [
+      /provider\s+String\?\s+@db\.Text/,
+      /providerPaymentId\s+String\?\s+@unique\s+@map\("provider_payment_id"\)\s+@db\.Text/,
+      /providerStatus\s+String\?\s+@map\("provider_status"\)\s+@db\.Text/,
+      /providerPayload\s+Json\?\s+@map\("provider_payload"\)\s+@db\.JsonB/,
+      /pixQrCode\s+String\?\s+@map\("pix_qr_code"\)\s+@db\.Text/,
+      /pixCopyPaste\s+String\?\s+@map\("pix_copy_paste"\)\s+@db\.Text/,
+      /pixExpiresAt\s+DateTime\?\s+@map\("pix_expires_at"\)\s+@db\.Timestamptz/,
+      /cardBrand\s+String\?\s+@map\("card_brand"\)\s+@db\.Text/,
+      /cardLast4\s+String\?\s+@map\("card_last4"\)\s+@db\.Text/,
+    ]) {
+      expect(payments).toMatch(field);
+    }
+
+    expect(payments).toContain("@@index([status, provider])");
+    expect(payments).toContain("@@index([provider])");
+    expect(migration).toContain(
+      'CREATE INDEX "payments_status_provider_idx" ON "payments"("status", "provider");',
+    );
+    expect(migration).toContain(
+      'CREATE INDEX "payments_provider_idx" ON "payments"("provider");',
+    );
+  });
+
+  it("regenerates Prisma client exports for the order/payment contract", () => {
+    for (const expected of [
+      "PENDING: 'PENDING'",
+      "MANUAL_CASH_ON_DELIVERY: 'MANUAL_CASH_ON_DELIVERY'",
+      "FAKE: 'FAKE'",
+    ]) {
+      expect(generatedEnums).toContain(expected);
+    }
+    expect(generatedEnums).not.toContain("PLACED: 'PLACED'");
+
+    for (const expected of [
+      "publicCode: string",
+      "customerId: string",
+      "deliveryStreet: string",
+      "deliveryNumber: string",
+      "deliveryNeighborhood: string",
+      "deliveryCity: string",
+      "deliveryState: string",
+      "deliveryPostalCode: string",
+      "generalObservation: string | null",
+      "paymentMethod: $Enums.PaymentMethod",
+      "paymentStatus: $Enums.PaymentStatus",
+    ]) {
+      expect(generatedOrder).toContain(expected);
+    }
+    expect(generatedOrder).not.toMatch(/^  code: string$/m);
+    expect(generatedOrder).toMatch(/scalars:[\s\S]*customerId: string[\s\S]*paymentStatus: \$Enums\.PaymentStatus/);
+    expect(generatedOrder).toMatch(
+      /export type OrderCreateInput = \{[\s\S]*customer: Prisma\.UserCreateNestedOneWithoutCustomerOrdersInput/,
+    );
+    expect(generatedOrder).toMatch(
+      /export type OrderUncheckedCreateInput = \{[\s\S]*customerId: string/,
+    );
+
+    for (const expected of [
+      "providerStatus: string | null",
+      "providerPayload",
+      "pixQrCode: string | null",
+      "pixCopyPaste: string | null",
+      "pixExpiresAt: Date | null",
+      "cardBrand: string | null",
+      "cardLast4: string | null",
+    ]) {
+      expect(generatedPayment).toContain(expected);
+    }
+  });
+
   it("stores only a hashed session token and indexes common auth lookups", () => {
     const sessions = tableDefinition("sessions");
 
@@ -186,6 +411,9 @@ describe("Prisma database foundation contract", () => {
     );
     expect(migration).toContain(
       'CREATE INDEX "orders_establishment_id_status_idx" ON "orders"("establishment_id", "status");',
+    );
+    expect(migration).toContain(
+      'ALTER INDEX "orders_code_key" RENAME TO "orders_public_code_key";',
     );
     expect(migration).toContain(
       'CREATE UNIQUE INDEX "monthly_billings_establishment_id_reference_month_key" ON "monthly_billings"("establishment_id", "reference_month");',

@@ -5,10 +5,8 @@ import type { Metadata } from "next";
 import { Container } from "@/components/ui/container";
 import { FeedbackState } from "@/components/ui/feedback-state";
 import { catalogService } from "@/modules/catalog/service";
-import type {
-  CatalogProductDto,
-  CatalogStoreCatalogDto,
-} from "@/modules/catalog/service-core";
+import type { CatalogStoreCatalogDto } from "@/modules/catalog/service-core";
+import { StoreCart } from "./store-cart";
 
 export const dynamic = "force-dynamic";
 
@@ -68,39 +66,7 @@ function StoreCatalog({ catalog }: { catalog: CatalogStoreCatalogDto }) {
   return (
     <>
       <StoreHeader catalog={catalog} />
-
-      <section aria-labelledby="active-products-heading" className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.28em] text-orange-700">
-              Produtos ativos
-            </p>
-            <h2
-              className="mt-2 text-2xl font-black tracking-[-0.04em] text-orange-950"
-              id="active-products-heading"
-            >
-              Cardápio disponível
-            </h2>
-          </div>
-          <span className="rounded-full border border-orange-100 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-orange-800 shadow-sm shadow-orange-950/5">
-            {catalog.products.length} ativos
-          </span>
-        </div>
-
-        {catalog.products.length === 0 ? (
-          <FeedbackState
-            description="Esta loja está ativa, mas ainda não possui produtos ativos no catálogo público."
-            title="Nenhum produto ativo no momento"
-            tone="empty"
-          />
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {catalog.products.map((product) => (
-              <ProductCard key={product.slug} product={product} />
-            ))}
-          </div>
-        )}
-      </section>
+      <StoreCart catalog={catalog} />
     </>
   );
 }
@@ -154,44 +120,6 @@ function StoreHeader({ catalog }: { catalog: CatalogStoreCatalogDto }) {
         </div>
       </div>
     </section>
-  );
-}
-
-function ProductCard({ product }: { product: CatalogProductDto }) {
-  const imageUrl = getSafeLocalImageUrl(product.imageUrl);
-
-  return (
-    <article className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border border-orange-100 bg-white shadow-sm shadow-orange-950/5">
-      <div className="relative grid aspect-[4/3] place-items-center bg-orange-50 text-4xl font-black text-orange-700">
-        {imageUrl ? (
-          <Image
-            alt={`Foto de ${product.name}`}
-            className="object-cover"
-            fill
-            sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
-            src={imageUrl}
-          />
-        ) : (
-          <span aria-hidden="true">{product.name.slice(0, 1).toUpperCase()}</span>
-        )}
-      </div>
-      <div className="flex flex-1 flex-col gap-4 p-5">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-600">
-            {product.category?.name ?? "Produto"}
-          </p>
-          <h3 className="mt-2 text-xl font-black tracking-[-0.04em] text-orange-950">
-            {product.name}
-          </h3>
-        </div>
-        <p className="text-sm leading-7 text-slate-700">
-          {product.description ?? "Produto ativo disponível neste catálogo."}
-        </p>
-        <p className="mt-auto text-2xl font-black tracking-[-0.04em] text-orange-700">
-          {formatMoney(product.price)}
-        </p>
-      </div>
-    </article>
   );
 }
 

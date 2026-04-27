@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run",
+    "test": "vitest run --root .",
     "db:format": "prisma format",
     "db:generate": "prisma generate",
     "db:migrate": "node scripts/require-env.mjs DATABASE_URL && prisma migrate dev",
@@ -17,9 +17,14 @@
     "smoke:s02": "tsx scripts/verify-s02-auth.ts",
     "smoke:s03": "tsx scripts/verify-s03-admin.ts",
     "smoke:s04": "tsx scripts/verify-s04-merchant.ts",
+    "smoke:s04-cash-order": "node scripts/require-env.mjs DATABASE_URL && tsx scripts/verify-s04-cash-order.ts",
     "smoke:s05": "tsx scripts/verify-s05-products-catalog.ts",
     "smoke:m001": "npm run smoke:s01 && npm run smoke:s02 && npm run smoke:s03 && npm run smoke:s04 && npm run smoke:s05",
-    "verify:m001": "npm run db:generate && npm test && npm run lint && npm run build && npm run db:deploy && npm run db:seed && npm run smoke:m001"
+    "smoke:m002-fixture": "node scripts/require-env.mjs DATABASE_URL AUTH_SECRET SESSION_COOKIE_NAME SESSION_MAX_AGE_DAYS && tsx scripts/verify-m002-e2e-fixture.ts",
+    "smoke:m002": "npm run smoke:s04-cash-order && npm run smoke:m002-fixture",
+    "e2e:m002": "node scripts/require-env.mjs DATABASE_URL AUTH_SECRET SESSION_COOKIE_NAME SESSION_MAX_AGE_DAYS && playwright test",
+    "verify:m001": "npm run db:generate && npm test && npm run lint && npm run build && npm run db:deploy && npm run db:seed && npm run smoke:m001",
+    "verify:m002": "npm run db:generate && npm test && npm run lint && npm run build && npm run db:deploy && npm run db:seed && npm run smoke:m001 && npm run smoke:m002 && npm run e2e:m002"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
@@ -34,6 +39,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.20.0",

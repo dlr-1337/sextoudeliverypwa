@@ -41,6 +41,7 @@ describe("public catalog service core", () => {
       "bar-do-ze",
     ]);
     expect(stores[0]).toEqual({
+      id: "est-b",
       name: "Açaí da Sexta",
       slug: "acai-da-sexta",
       description: "Entrega local de sexta",
@@ -55,12 +56,18 @@ describe("public catalog service core", () => {
     expect(JSON.stringify(stores)).not.toContain("passwordHash");
     expect(JSON.stringify(stores)).not.toContain("tokenHash");
     expect(JSON.stringify(stores)).not.toContain("sessions");
+    expect(JSON.stringify(stores)).not.toContain("status");
     expect(JSON.stringify(stores)).not.toContain("PENDING");
+    expect(JSON.stringify(stores)).not.toContain("BLOCKED");
+    expect(JSON.stringify(stores)).not.toContain("INACTIVE");
+    expect(JSON.stringify(stores)).not.toContain("createdAt");
+    expect(JSON.stringify(stores)).not.toContain("updatedAt");
     expect(fakeDb.calls.establishmentFindMany[0]).toMatchObject({
       where: { status: "ACTIVE" },
       orderBy: [{ name: "asc" }, { slug: "asc" }, { id: "asc" }],
       take: 10,
       select: {
+        id: true,
         name: true,
         slug: true,
         description: true,
@@ -112,6 +119,7 @@ describe("public catalog service core", () => {
     );
 
     expect(catalog).toMatchObject({
+      id: "est-a",
       name: "Sextou Bar",
       slug: "sextou-bar",
       category: null,
@@ -120,6 +128,7 @@ describe("public catalog service core", () => {
     });
     expect(catalog.products).toEqual([
       {
+        id: "product-a",
         name: "Batata especial",
         slug: "batata-especial",
         description: "Produto liberado no catálogo",
@@ -128,6 +137,7 @@ describe("public catalog service core", () => {
         category: null,
       },
       {
+        id: "product-b",
         name: "Isca de peixe",
         slug: "isca-de-peixe",
         description: "Produto liberado no catálogo",
@@ -138,13 +148,21 @@ describe("public catalog service core", () => {
     ]);
     expect(JSON.stringify(catalog)).not.toContain("ownerId");
     expect(JSON.stringify(catalog)).not.toContain("status");
+    expect(JSON.stringify(catalog)).not.toContain("ACTIVE");
+    expect(JSON.stringify(catalog)).not.toContain("DRAFT");
+    expect(JSON.stringify(catalog)).not.toContain("PAUSED");
+    expect(JSON.stringify(catalog)).not.toContain("ARCHIVED");
     expect(JSON.stringify(catalog)).not.toContain("isFeatured");
     expect(JSON.stringify(catalog)).not.toContain("establishmentId");
     expect(JSON.stringify(catalog)).not.toContain("passwordHash");
+    expect(JSON.stringify(catalog)).not.toContain("tokenHash");
     expect(JSON.stringify(catalog)).not.toContain("sessions");
+    expect(JSON.stringify(catalog)).not.toContain("createdAt");
+    expect(JSON.stringify(catalog)).not.toContain("updatedAt");
     expect(fakeDb.calls.establishmentFindFirst[0]).toMatchObject({
       where: { slug: "sextou-bar", status: "ACTIVE" },
       select: {
+        id: true,
         name: true,
         slug: true,
         description: true,
@@ -158,6 +176,7 @@ describe("public catalog service core", () => {
           where: { status: "ACTIVE" },
           orderBy: [{ isFeatured: "desc" }, { name: "asc" }, { id: "asc" }],
           select: {
+            id: true,
             name: true,
             slug: true,
             description: true,
@@ -251,17 +270,21 @@ type FakeProductRow = {
   category: CatalogDbCategoryRow | null;
   ownerId?: string;
   passwordHash?: string;
+  tokenHash?: string;
   sessions?: unknown[];
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
 type FakeStoreRow = CatalogDbStoreSummaryRow & {
-  id: string;
   status: EstablishmentStatusValue;
   ownerId: string;
   passwordHash?: string;
   tokenHash?: string;
   sessions?: unknown[];
   products: FakeProductRow[];
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
 type FakeCatalogDb = CatalogServiceClient & {
@@ -367,6 +390,8 @@ function buildStore(overrides: Partial<FakeStoreRow> = {}): FakeStoreRow {
     passwordHash: "must-not-serialize",
     tokenHash: "must-not-serialize",
     sessions: [{ tokenHash: "must-not-serialize" }],
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-02T00:00:00.000Z"),
     ...overrides,
   };
 }
@@ -393,7 +418,10 @@ function buildProduct(overrides: Partial<FakeProductRow> = {}): FakeProductRow {
     category: buildCategory(),
     ownerId: "owner-secret",
     passwordHash: "must-not-serialize",
+    tokenHash: "must-not-serialize",
     sessions: [{ tokenHash: "must-not-serialize" }],
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-02T00:00:00.000Z"),
     ...overrides,
   };
 }

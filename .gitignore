@@ -43,6 +43,12 @@ build/
 /build
 coverage/
 /coverage
+
+# Playwright local reports and failure artifacts
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
 .cache/
 tmp/
 

@@ -42,6 +42,12 @@ export type PaymentMinAggregateOutputType = {
   amount: runtime.Decimal | null
   provider: string | null
   providerPaymentId: string | null
+  providerStatus: string | null
+  pixQrCode: string | null
+  pixCopyPaste: string | null
+  pixExpiresAt: Date | null
+  cardBrand: string | null
+  cardLast4: string | null
   paidAt: Date | null
   failedAt: Date | null
   createdAt: Date | null
@@ -56,6 +62,12 @@ export type PaymentMaxAggregateOutputType = {
   amount: runtime.Decimal | null
   provider: string | null
   providerPaymentId: string | null
+  providerStatus: string | null
+  pixQrCode: string | null
+  pixCopyPaste: string | null
+  pixExpiresAt: Date | null
+  cardBrand: string | null
+  cardLast4: string | null
   paidAt: Date | null
   failedAt: Date | null
   createdAt: Date | null
@@ -70,6 +82,13 @@ export type PaymentCountAggregateOutputType = {
   amount: number
   provider: number
   providerPaymentId: number
+  providerStatus: number
+  providerPayload: number
+  pixQrCode: number
+  pixCopyPaste: number
+  pixExpiresAt: number
+  cardBrand: number
+  cardLast4: number
   paidAt: number
   failedAt: number
   createdAt: number
@@ -94,6 +113,12 @@ export type PaymentMinAggregateInputType = {
   amount?: true
   provider?: true
   providerPaymentId?: true
+  providerStatus?: true
+  pixQrCode?: true
+  pixCopyPaste?: true
+  pixExpiresAt?: true
+  cardBrand?: true
+  cardLast4?: true
   paidAt?: true
   failedAt?: true
   createdAt?: true
@@ -108,6 +133,12 @@ export type PaymentMaxAggregateInputType = {
   amount?: true
   provider?: true
   providerPaymentId?: true
+  providerStatus?: true
+  pixQrCode?: true
+  pixCopyPaste?: true
+  pixExpiresAt?: true
+  cardBrand?: true
+  cardLast4?: true
   paidAt?: true
   failedAt?: true
   createdAt?: true
@@ -122,6 +153,13 @@ export type PaymentCountAggregateInputType = {
   amount?: true
   provider?: true
   providerPaymentId?: true
+  providerStatus?: true
+  providerPayload?: true
+  pixQrCode?: true
+  pixCopyPaste?: true
+  pixExpiresAt?: true
+  cardBrand?: true
+  cardLast4?: true
   paidAt?: true
   failedAt?: true
   createdAt?: true
@@ -223,6 +261,13 @@ export type PaymentGroupByOutputType = {
   amount: runtime.Decimal
   provider: string | null
   providerPaymentId: string | null
+  providerStatus: string | null
+  providerPayload: runtime.JsonValue | null
+  pixQrCode: string | null
+  pixCopyPaste: string | null
+  pixExpiresAt: Date | null
+  cardBrand: string | null
+  cardLast4: string | null
   paidAt: Date | null
   failedAt: Date | null
   createdAt: Date
@@ -260,6 +305,13 @@ export type PaymentWhereInput = {
   amount?: Prisma.DecimalFilter<"Payment"> | runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: Prisma.StringNullableFilter<"Payment"> | string | null
   providerPaymentId?: Prisma.StringNullableFilter<"Payment"> | string | null
+  providerStatus?: Prisma.StringNullableFilter<"Payment"> | string | null
+  providerPayload?: Prisma.JsonNullableFilter<"Payment">
+  pixQrCode?: Prisma.StringNullableFilter<"Payment"> | string | null
+  pixCopyPaste?: Prisma.StringNullableFilter<"Payment"> | string | null
+  pixExpiresAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
+  cardBrand?: Prisma.StringNullableFilter<"Payment"> | string | null
+  cardLast4?: Prisma.StringNullableFilter<"Payment"> | string | null
   paidAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   failedAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Payment"> | Date | string
@@ -275,6 +327,13 @@ export type PaymentOrderByWithRelationInput = {
   amount?: Prisma.SortOrder
   provider?: Prisma.SortOrderInput | Prisma.SortOrder
   providerPaymentId?: Prisma.SortOrderInput | Prisma.SortOrder
+  providerStatus?: Prisma.SortOrderInput | Prisma.SortOrder
+  providerPayload?: Prisma.SortOrderInput | Prisma.SortOrder
+  pixQrCode?: Prisma.SortOrderInput | Prisma.SortOrder
+  pixCopyPaste?: Prisma.SortOrderInput | Prisma.SortOrder
+  pixExpiresAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  cardBrand?: Prisma.SortOrderInput | Prisma.SortOrder
+  cardLast4?: Prisma.SortOrderInput | Prisma.SortOrder
   paidAt?: Prisma.SortOrderInput | Prisma.SortOrder
   failedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -293,6 +352,13 @@ export type PaymentWhereUniqueInput = Prisma.AtLeast<{
   status?: Prisma.EnumPaymentStatusFilter<"Payment"> | $Enums.PaymentStatus
   amount?: Prisma.DecimalFilter<"Payment"> | runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: Prisma.StringNullableFilter<"Payment"> | string | null
+  providerStatus?: Prisma.StringNullableFilter<"Payment"> | string | null
+  providerPayload?: Prisma.JsonNullableFilter<"Payment">
+  pixQrCode?: Prisma.StringNullableFilter<"Payment"> | string | null
+  pixCopyPaste?: Prisma.StringNullableFilter<"Payment"> | string | null
+  pixExpiresAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
+  cardBrand?: Prisma.StringNullableFilter<"Payment"> | string | null
+  cardLast4?: Prisma.StringNullableFilter<"Payment"> | string | null
   paidAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   failedAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Payment"> | Date | string
@@ -308,6 +374,13 @@ export type PaymentOrderByWithAggregationInput = {
   amount?: Prisma.SortOrder
   provider?: Prisma.SortOrderInput | Prisma.SortOrder
   providerPaymentId?: Prisma.SortOrderInput | Prisma.SortOrder
+  providerStatus?: Prisma.SortOrderInput | Prisma.SortOrder
+  providerPayload?: Prisma.SortOrderInput | Prisma.SortOrder
+  pixQrCode?: Prisma.SortOrderInput | Prisma.SortOrder
+  pixCopyPaste?: Prisma.SortOrderInput | Prisma.SortOrder
+  pixExpiresAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  cardBrand?: Prisma.SortOrderInput | Prisma.SortOrder
+  cardLast4?: Prisma.SortOrderInput | Prisma.SortOrder
   paidAt?: Prisma.SortOrderInput | Prisma.SortOrder
   failedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -330,6 +403,13 @@ export type PaymentScalarWhereWithAggregatesInput = {
   amount?: Prisma.DecimalWithAggregatesFilter<"Payment"> | runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
   providerPaymentId?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
+  providerStatus?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
+  providerPayload?: Prisma.JsonNullableWithAggregatesFilter<"Payment">
+  pixQrCode?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
+  pixCopyPaste?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
+  pixExpiresAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Payment"> | Date | string | null
+  cardBrand?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
+  cardLast4?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
   paidAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Payment"> | Date | string | null
   failedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Payment"> | Date | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Payment"> | Date | string
@@ -343,6 +423,13 @@ export type PaymentCreateInput = {
   amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: string | null
   providerPaymentId?: string | null
+  providerStatus?: string | null
+  providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  pixQrCode?: string | null
+  pixCopyPaste?: string | null
+  pixExpiresAt?: Date | string | null
+  cardBrand?: string | null
+  cardLast4?: string | null
   paidAt?: Date | string | null
   failedAt?: Date | string | null
   createdAt?: Date | string
@@ -358,6 +445,13 @@ export type PaymentUncheckedCreateInput = {
   amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: string | null
   providerPaymentId?: string | null
+  providerStatus?: string | null
+  providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  pixQrCode?: string | null
+  pixCopyPaste?: string | null
+  pixExpiresAt?: Date | string | null
+  cardBrand?: string | null
+  cardLast4?: string | null
   paidAt?: Date | string | null
   failedAt?: Date | string | null
   createdAt?: Date | string
@@ -371,6 +465,13 @@ export type PaymentUpdateInput = {
   amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerPaymentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  providerStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  pixQrCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixCopyPaste?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  cardBrand?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  cardLast4?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   failedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -386,6 +487,13 @@ export type PaymentUncheckedUpdateInput = {
   amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerPaymentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  providerStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  pixQrCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixCopyPaste?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  cardBrand?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  cardLast4?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   failedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -400,6 +508,13 @@ export type PaymentCreateManyInput = {
   amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: string | null
   providerPaymentId?: string | null
+  providerStatus?: string | null
+  providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  pixQrCode?: string | null
+  pixCopyPaste?: string | null
+  pixExpiresAt?: Date | string | null
+  cardBrand?: string | null
+  cardLast4?: string | null
   paidAt?: Date | string | null
   failedAt?: Date | string | null
   createdAt?: Date | string
@@ -413,6 +528,13 @@ export type PaymentUpdateManyMutationInput = {
   amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerPaymentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  providerStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  pixQrCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixCopyPaste?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  cardBrand?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  cardLast4?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   failedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -427,6 +549,13 @@ export type PaymentUncheckedUpdateManyInput = {
   amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerPaymentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  providerStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  pixQrCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixCopyPaste?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  cardBrand?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  cardLast4?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   failedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -446,6 +575,13 @@ export type PaymentCountOrderByAggregateInput = {
   amount?: Prisma.SortOrder
   provider?: Prisma.SortOrder
   providerPaymentId?: Prisma.SortOrder
+  providerStatus?: Prisma.SortOrder
+  providerPayload?: Prisma.SortOrder
+  pixQrCode?: Prisma.SortOrder
+  pixCopyPaste?: Prisma.SortOrder
+  pixExpiresAt?: Prisma.SortOrder
+  cardBrand?: Prisma.SortOrder
+  cardLast4?: Prisma.SortOrder
   paidAt?: Prisma.SortOrder
   failedAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -464,6 +600,12 @@ export type PaymentMaxOrderByAggregateInput = {
   amount?: Prisma.SortOrder
   provider?: Prisma.SortOrder
   providerPaymentId?: Prisma.SortOrder
+  providerStatus?: Prisma.SortOrder
+  pixQrCode?: Prisma.SortOrder
+  pixCopyPaste?: Prisma.SortOrder
+  pixExpiresAt?: Prisma.SortOrder
+  cardBrand?: Prisma.SortOrder
+  cardLast4?: Prisma.SortOrder
   paidAt?: Prisma.SortOrder
   failedAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -478,6 +620,12 @@ export type PaymentMinOrderByAggregateInput = {
   amount?: Prisma.SortOrder
   provider?: Prisma.SortOrder
   providerPaymentId?: Prisma.SortOrder
+  providerStatus?: Prisma.SortOrder
+  pixQrCode?: Prisma.SortOrder
+  pixCopyPaste?: Prisma.SortOrder
+  pixExpiresAt?: Prisma.SortOrder
+  cardBrand?: Prisma.SortOrder
+  cardLast4?: Prisma.SortOrder
   paidAt?: Prisma.SortOrder
   failedAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -520,14 +668,6 @@ export type PaymentUncheckedUpdateOneWithoutOrderNestedInput = {
   update?: Prisma.XOR<Prisma.XOR<Prisma.PaymentUpdateToOneWithWhereWithoutOrderInput, Prisma.PaymentUpdateWithoutOrderInput>, Prisma.PaymentUncheckedUpdateWithoutOrderInput>
 }
 
-export type EnumPaymentMethodFieldUpdateOperationsInput = {
-  set?: $Enums.PaymentMethod
-}
-
-export type EnumPaymentStatusFieldUpdateOperationsInput = {
-  set?: $Enums.PaymentStatus
-}
-
 export type PaymentCreateWithoutOrderInput = {
   id?: string
   method: $Enums.PaymentMethod
@@ -535,6 +675,13 @@ export type PaymentCreateWithoutOrderInput = {
   amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: string | null
   providerPaymentId?: string | null
+  providerStatus?: string | null
+  providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  pixQrCode?: string | null
+  pixCopyPaste?: string | null
+  pixExpiresAt?: Date | string | null
+  cardBrand?: string | null
+  cardLast4?: string | null
   paidAt?: Date | string | null
   failedAt?: Date | string | null
   createdAt?: Date | string
@@ -548,6 +695,13 @@ export type PaymentUncheckedCreateWithoutOrderInput = {
   amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: string | null
   providerPaymentId?: string | null
+  providerStatus?: string | null
+  providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  pixQrCode?: string | null
+  pixCopyPaste?: string | null
+  pixExpiresAt?: Date | string | null
+  cardBrand?: string | null
+  cardLast4?: string | null
   paidAt?: Date | string | null
   failedAt?: Date | string | null
   createdAt?: Date | string
@@ -577,6 +731,13 @@ export type PaymentUpdateWithoutOrderInput = {
   amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerPaymentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  providerStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  pixQrCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixCopyPaste?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  cardBrand?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  cardLast4?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   failedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -590,6 +751,13 @@ export type PaymentUncheckedUpdateWithoutOrderInput = {
   amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   provider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerPaymentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  providerStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  pixQrCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixCopyPaste?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  cardBrand?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  cardLast4?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   failedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -606,6 +774,13 @@ export type PaymentSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   amount?: boolean
   provider?: boolean
   providerPaymentId?: boolean
+  providerStatus?: boolean
+  providerPayload?: boolean
+  pixQrCode?: boolean
+  pixCopyPaste?: boolean
+  pixExpiresAt?: boolean
+  cardBrand?: boolean
+  cardLast4?: boolean
   paidAt?: boolean
   failedAt?: boolean
   createdAt?: boolean
@@ -621,6 +796,13 @@ export type PaymentSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   amount?: boolean
   provider?: boolean
   providerPaymentId?: boolean
+  providerStatus?: boolean
+  providerPayload?: boolean
+  pixQrCode?: boolean
+  pixCopyPaste?: boolean
+  pixExpiresAt?: boolean
+  cardBrand?: boolean
+  cardLast4?: boolean
   paidAt?: boolean
   failedAt?: boolean
   createdAt?: boolean
@@ -636,6 +818,13 @@ export type PaymentSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   amount?: boolean
   provider?: boolean
   providerPaymentId?: boolean
+  providerStatus?: boolean
+  providerPayload?: boolean
+  pixQrCode?: boolean
+  pixCopyPaste?: boolean
+  pixExpiresAt?: boolean
+  cardBrand?: boolean
+  cardLast4?: boolean
   paidAt?: boolean
   failedAt?: boolean
   createdAt?: boolean
@@ -651,13 +840,20 @@ export type PaymentSelectScalar = {
   amount?: boolean
   provider?: boolean
   providerPaymentId?: boolean
+  providerStatus?: boolean
+  providerPayload?: boolean
+  pixQrCode?: boolean
+  pixCopyPaste?: boolean
+  pixExpiresAt?: boolean
+  cardBrand?: boolean
+  cardLast4?: boolean
   paidAt?: boolean
   failedAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type PaymentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "orderId" | "method" | "status" | "amount" | "provider" | "providerPaymentId" | "paidAt" | "failedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["payment"]>
+export type PaymentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "orderId" | "method" | "status" | "amount" | "provider" | "providerPaymentId" | "providerStatus" | "providerPayload" | "pixQrCode" | "pixCopyPaste" | "pixExpiresAt" | "cardBrand" | "cardLast4" | "paidAt" | "failedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["payment"]>
 export type PaymentInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   order?: boolean | Prisma.OrderDefaultArgs<ExtArgs>
 }
@@ -681,6 +877,13 @@ export type $PaymentPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     amount: runtime.Decimal
     provider: string | null
     providerPaymentId: string | null
+    providerStatus: string | null
+    providerPayload: runtime.JsonValue | null
+    pixQrCode: string | null
+    pixCopyPaste: string | null
+    pixExpiresAt: Date | null
+    cardBrand: string | null
+    cardLast4: string | null
     paidAt: Date | null
     failedAt: Date | null
     createdAt: Date
@@ -1116,6 +1319,13 @@ export interface PaymentFieldRefs {
   readonly amount: Prisma.FieldRef<"Payment", 'Decimal'>
   readonly provider: Prisma.FieldRef<"Payment", 'String'>
   readonly providerPaymentId: Prisma.FieldRef<"Payment", 'String'>
+  readonly providerStatus: Prisma.FieldRef<"Payment", 'String'>
+  readonly providerPayload: Prisma.FieldRef<"Payment", 'Json'>
+  readonly pixQrCode: Prisma.FieldRef<"Payment", 'String'>
+  readonly pixCopyPaste: Prisma.FieldRef<"Payment", 'String'>
+  readonly pixExpiresAt: Prisma.FieldRef<"Payment", 'DateTime'>
+  readonly cardBrand: Prisma.FieldRef<"Payment", 'String'>
+  readonly cardLast4: Prisma.FieldRef<"Payment", 'String'>
   readonly paidAt: Prisma.FieldRef<"Payment", 'DateTime'>
   readonly failedAt: Prisma.FieldRef<"Payment", 'DateTime'>
   readonly createdAt: Prisma.FieldRef<"Payment", 'DateTime'>

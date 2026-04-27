@@ -10,6 +10,7 @@ export const CATALOG_CATEGORY_SELECT = {
 } as const;
 
 export const CATALOG_STORE_SELECT = {
+  id: true,
   name: true,
   slug: true,
   description: true,
@@ -22,6 +23,7 @@ export const CATALOG_STORE_SELECT = {
 } as const;
 
 export const CATALOG_PRODUCT_SELECT = {
+  id: true,
   name: true,
   slug: true,
   description: true,
@@ -91,6 +93,7 @@ export type CatalogDbCategoryRow = {
 };
 
 export type CatalogDbStoreSummaryRow = {
+  id: string;
   name: string;
   slug: string;
   description: string | null;
@@ -103,6 +106,7 @@ export type CatalogDbStoreSummaryRow = {
 };
 
 export type CatalogDbProductRow = {
+  id: string;
   name: string;
   slug: string;
   description: string | null;
@@ -118,6 +122,7 @@ export type CatalogDbStoreCatalogRow = CatalogDbStoreSummaryRow & {
 export type CatalogCategoryDto = CatalogDbCategoryRow;
 
 export type CatalogStoreSummaryDto = {
+  id: string;
   name: string;
   slug: string;
   description: string | null;
@@ -130,6 +135,7 @@ export type CatalogStoreSummaryDto = {
 };
 
 export type CatalogProductDto = {
+  id: string;
   name: string;
   slug: string;
   description: string | null;
@@ -280,6 +286,7 @@ function toStoreSummaryDto(
   store: CatalogDbStoreSummaryRow,
 ): CatalogStoreSummaryDto {
   return {
+    id: store.id,
     name: store.name,
     slug: store.slug,
     description: store.description ?? null,
@@ -301,6 +308,7 @@ function toStoreCatalogDto(store: CatalogDbStoreCatalogRow): CatalogStoreCatalog
 
 function toProductDto(product: CatalogDbProductRow): CatalogProductDto {
   return {
+    id: product.id,
     name: product.name,
     slug: product.slug,
     description: product.description ?? null,

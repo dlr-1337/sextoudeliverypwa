@@ -7,6 +7,7 @@ export default defineConfig({
       "src/**/*.test.{ts,tsx}",
       "prisma/**/*.test.ts",
       "scripts/**/*.test.ts",
+      "e2e/**/*.test.ts",
     ],
   },
 });

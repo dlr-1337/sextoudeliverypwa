@@ -11,6 +11,12 @@ export type LoginNotice = "sessao" | "saida";
 
 const AUTH_SURFACE_PATHS = new Set(["/login", "/cadastro"]);
 
+const ROLE_ADDITIONAL_POST_AUTH_DESTINATIONS = {
+  ADMIN: [],
+  MERCHANT: [],
+  CUSTOMER: ["/checkout"],
+} as const satisfies Record<AuthRole, readonly `/${string}`[]>;
+
 export function getRoleDestination(role: AuthRole) {
   return ROLE_DEFAULT_REDIRECTS[role];
 }
@@ -114,9 +120,15 @@ export function getAccessDeniedCopy(reason: unknown) {
 
 function isRoleDestination(path: string, role: AuthRole) {
   const pathname = getPathname(path);
-  const destination = getRoleDestination(role);
+  const destinations = [
+    getRoleDestination(role),
+    ...ROLE_ADDITIONAL_POST_AUTH_DESTINATIONS[role],
+  ];
 
-  return pathname === destination || pathname.startsWith(`${destination}/`);
+  return destinations.some(
+    (destination) =>
+      pathname === destination || pathname.startsWith(`${destination}/`),
+  );
 }
 
 function isAuthSurface(path: string) {

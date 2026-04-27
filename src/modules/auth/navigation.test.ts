@@ -21,8 +21,15 @@ describe("auth navigation helpers", () => {
     expect(resolvePostAuthRedirect("/conta?tab=pedidos", "CUSTOMER")).toBe(
       "/conta?tab=pedidos",
     );
+    expect(resolvePostAuthRedirect("/checkout?foo=1#carrinho", "CUSTOMER")).toBe(
+      "/checkout?foo=1#carrinho",
+    );
     expect(resolvePostAuthRedirect("/admin/lojas", "ADMIN")).toBe(
       "/admin/lojas",
+    );
+    expect(resolvePostAuthRedirect("/checkout", "ADMIN")).toBe("/admin");
+    expect(resolvePostAuthRedirect("/checkout", "MERCHANT")).toBe(
+      "/estabelecimento",
     );
     expect(resolvePostAuthRedirect("/admin", "CUSTOMER")).toBe("/conta");
     expect(resolvePostAuthRedirect("https://evil.example", "ADMIN")).toBe(
