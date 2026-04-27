@@ -1,0 +1,295 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  MERCHANT
+  CUSTOMER
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum EstablishmentStatus {
+  PENDING
+  ACTIVE
+  BLOCKED
+  INACTIVE
+}
+
+enum CategoryType {
+  ESTABLISHMENT
+  PRODUCT
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum OrderStatus {
+  DRAFT
+  PLACED
+  ACCEPTED
+  PREPARING
+  READY_FOR_PICKUP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELED
+}
+
+enum PaymentMethod {
+  CASH
+  PIX
+  CARD
+  FAKE
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  FAILED
+  REFUNDED
+  CANCELED
+}
+
+enum MonthlyBillingStatus {
+  OPEN
+  PENDING_PAYMENT
+  PAID
+  OVERDUE
+  CANCELED
+}
+
+model User {
+  id                  String               @id @default(cuid()) @db.Text
+  name                String               @db.Text
+  email               String               @unique @db.Text
+  passwordHash        String               @map("password_hash") @db.Text
+  role                UserRole             @default(CUSTOMER)
+  status              UserStatus           @default(ACTIVE)
+  phone               String?              @db.Text
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  sessions            Session[]            @relation("UserSessions")
+  ownedEstablishments Establishment[]      @relation("EstablishmentOwner")
+  customerOrders      Order[]              @relation("CustomerOrders")
+  orderStatusChanges  OrderStatusHistory[] @relation("OrderStatusChangedBy")
+
+  @@index([role, status])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model Session {
+  id         String    @id @default(cuid()) @db.Text
+  userId     String    @map("user_id") @db.Text
+  tokenHash  String    @unique @map("token_hash") @db.Text
+  userAgent  String?   @map("user_agent") @db.Text
+  ipAddress  String?   @map("ip_address") @db.Text
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  user       User      @relation("UserSessions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("sessions")
+}
+
+model Category {
+  id             String          @id @default(cuid()) @db.Text
+  name           String          @db.Text
+  slug           String          @db.Text
+  type           CategoryType
+  description    String?         @db.Text
+  displayOrder   Int             @default(0) @map("display_order")
+  isActive       Boolean         @default(true) @map("is_active")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  establishments Establishment[]
+  products       Product[]
+
+  @@unique([slug, type])
+  @@index([type, isActive])
+  @@index([displayOrder])
+  @@map("categories")
+}
+
+model Establishment {
+  id           String              @id @default(cuid()) @db.Text
+  ownerId      String              @map("owner_id") @db.Text
+  categoryId   String?             @map("category_id") @db.Text
+  name         String              @db.Text
+  slug         String              @unique @db.Text
+  description  String?             @db.Text
+  logoUrl      String?             @map("logo_url") @db.Text
+  status       EstablishmentStatus @default(PENDING)
+  phone        String?             @db.Text
+  whatsapp     String?             @db.Text
+  addressLine1 String?             @map("address_line_1") @db.Text
+  addressLine2 String?             @map("address_line_2") @db.Text
+  city         String?             @db.Text
+  state        String?             @db.Text
+  postalCode   String?             @map("postal_code") @db.Text
+  deliveryFee  Decimal             @default(0) @map("delivery_fee") @db.Decimal(10, 2)
+  minimumOrder Decimal             @default(0) @map("minimum_order") @db.Decimal(10, 2)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  owner        User                @relation("EstablishmentOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  category     Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  products     Product[]
+  orders       Order[]
+  billings     MonthlyBilling[]
+
+  @@index([ownerId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([status, slug])
+  @@map("establishments")
+}
+
+model Product {
+  id              String        @id @default(cuid()) @db.Text
+  establishmentId String        @map("establishment_id") @db.Text
+  categoryId      String?       @map("category_id") @db.Text
+  name            String        @db.Text
+  slug            String        @db.Text
+  description     String?       @db.Text
+  price           Decimal       @db.Decimal(10, 2)
+  status          ProductStatus @default(DRAFT)
+  imageUrl        String?       @map("image_url") @db.Text
+  isFeatured      Boolean       @default(false) @map("is_featured")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  establishment   Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+  category        Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  orderItems      OrderItem[]
+
+  @@unique([establishmentId, slug])
+  @@index([establishmentId, status])
+  @@index([categoryId])
+  @@index([status])
+  @@map("products")
+}
+
+model Order {
+  id              String               @id @default(cuid()) @db.Text
+  code            String               @unique @db.Text
+  establishmentId String               @map("establishment_id") @db.Text
+  customerId      String?              @map("customer_id") @db.Text
+  status          OrderStatus          @default(DRAFT)
+  customerName    String               @map("customer_name") @db.Text
+  customerPhone   String               @map("customer_phone") @db.Text
+  deliveryAddress String?              @map("delivery_address") @db.Text
+  subtotal        Decimal              @db.Decimal(10, 2)
+  deliveryFee     Decimal              @default(0) @map("delivery_fee") @db.Decimal(10, 2)
+  discount        Decimal              @default(0) @db.Decimal(10, 2)
+  total           Decimal              @db.Decimal(10, 2)
+  notes           String?              @db.Text
+  placedAt        DateTime?            @map("placed_at") @db.Timestamptz
+  acceptedAt      DateTime?            @map("accepted_at") @db.Timestamptz
+  deliveredAt     DateTime?            @map("delivered_at") @db.Timestamptz
+  canceledAt      DateTime?            @map("canceled_at") @db.Timestamptz
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  establishment   Establishment        @relation(fields: [establishmentId], references: [id], onDelete: Restrict)
+  customer        User?                @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: SetNull)
+  items           OrderItem[]
+  statusHistory   OrderStatusHistory[]
+  payment         Payment?
+
+  @@index([establishmentId, status])
+  @@index([customerId])
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String   @id @default(cuid()) @db.Text
+  orderId     String   @map("order_id") @db.Text
+  productId   String?  @map("product_id") @db.Text
+  productName String   @map("product_name") @db.Text
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(10, 2)
+  quantity    Int
+  total       Decimal  @db.Decimal(10, 2)
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id          String      @id @default(cuid()) @db.Text
+  orderId     String      @map("order_id") @db.Text
+  status      OrderStatus
+  changedById String?     @map("changed_by_id") @db.Text
+  note        String?     @db.Text
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedBy   User?       @relation("OrderStatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+  @@index([changedById])
+  @@index([status])
+  @@map("order_status_history")
+}
+
+model Payment {
+  id                String        @id @default(cuid()) @db.Text
+  orderId           String        @unique @map("order_id") @db.Text
+  method            PaymentMethod
+  status            PaymentStatus @default(PENDING)
+  amount            Decimal       @db.Decimal(10, 2)
+  provider          String?       @db.Text
+  providerPaymentId String?       @unique @map("provider_payment_id") @db.Text
+  paidAt            DateTime?     @map("paid_at") @db.Timestamptz
+  failedAt          DateTime?     @map("failed_at") @db.Timestamptz
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([method])
+  @@map("payments")
+}
+
+model MonthlyBilling {
+  id              String               @id @default(cuid()) @db.Text
+  establishmentId String               @map("establishment_id") @db.Text
+  referenceMonth  DateTime             @map("reference_month") @db.Date
+  status          MonthlyBillingStatus @default(OPEN)
+  grossAmount     Decimal              @default(0) @map("gross_amount") @db.Decimal(10, 2)
+  feeAmount       Decimal              @default(0) @map("fee_amount") @db.Decimal(10, 2)
+  netAmount       Decimal              @default(0) @map("net_amount") @db.Decimal(10, 2)
+  dueDate         DateTime             @map("due_date") @db.Date
+  paidAt          DateTime?            @map("paid_at") @db.Timestamptz
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  establishment   Establishment        @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+
+  @@unique([establishmentId, referenceMonth])
+  @@index([establishmentId, status])
+  @@index([status])
+  @@index([dueDate])
+  @@map("monthly_billings")
+}

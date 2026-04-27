@@ -1,0 +1,53 @@
+{
+  "name": "sextou-delivery-pwa",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest run",
+    "db:format": "prisma format",
+    "db:generate": "prisma generate",
+    "db:migrate": "node scripts/require-env.mjs DATABASE_URL && prisma migrate dev",
+    "db:deploy": "node scripts/require-env.mjs DATABASE_URL && prisma migrate deploy",
+    "db:seed": "node scripts/require-env.mjs DATABASE_URL && tsx prisma/seed.ts",
+    "smoke:s01": "tsx scripts/verify-s01-db.ts",
+    "smoke:s02": "tsx scripts/verify-s02-auth.ts",
+    "smoke:s03": "tsx scripts/verify-s03-admin.ts",
+    "smoke:s04": "tsx scripts/verify-s04-merchant.ts",
+    "smoke:s05": "tsx scripts/verify-s05-products-catalog.ts",
+    "smoke:m001": "npm run smoke:s01 && npm run smoke:s02 && npm run smoke:s03 && npm run smoke:s04 && npm run smoke:s05",
+    "verify:m001": "npm run db:generate && npm test && npm run lint && npm run build && npm run db:deploy && npm run db:seed && npm run smoke:m001"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "argon2": "^0.44.0",
+    "dotenv": "^17.4.2",
+    "file-type": "^21.3.4",
+    "next": "16.2.4",
+    "pg": "^8.20.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "prisma": "^7.8.0",
+    "tailwindcss": "^4",
+    "tsx": "^4.21.0",
+    "typescript": "^5",
+    "vitest": "^4.1.5"
+  },
+  "overrides": {
+    "postcss": "8.5.12"
+  }
+}
