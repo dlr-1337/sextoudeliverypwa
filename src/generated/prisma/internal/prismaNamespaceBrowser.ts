@@ -240,6 +240,7 @@ export const PaymentScalarFieldEnum = {
   providerPaymentId: 'providerPaymentId',
   providerStatus: 'providerStatus',
   providerPayload: 'providerPayload',
+  checkoutUrl: 'checkoutUrl',
   pixQrCode: 'pixQrCode',
   pixCopyPaste: 'pixCopyPaste',
   pixExpiresAt: 'pixExpiresAt',

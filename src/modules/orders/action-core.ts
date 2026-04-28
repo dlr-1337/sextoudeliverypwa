@@ -36,6 +36,8 @@ import {
   type MerchantOrderTransitionActionValues,
 } from "./action-state";
 
+const CHECKOUT_FORBIDDEN_FIELD_MESSAGE = "Campo não permitido.";
+
 export const CHECKOUT_ACTION_MESSAGES = {
   CREATED: "Pedido criado. Redirecionando para a confirmação.",
   VALIDATION_FAILED: "Revise os dados do checkout.",
@@ -51,11 +53,13 @@ export const MERCHANT_ORDER_TRANSITION_ACTION_MESSAGES = {
 
 type MaybePromise<T> = T | Promise<T>;
 
+type CheckoutOrderFailureCode = CashOrderFailureCode;
+
 type CheckoutPayloadCandidate = Record<string, unknown> & {
   items: Record<string, unknown>[];
 };
 
-type NormalizedCashOrderResult =
+type NormalizedCheckoutOrderResult =
   | {
       ok: true;
       publicCode: string;
@@ -63,7 +67,7 @@ type NormalizedCashOrderResult =
     }
   | {
       ok: false;
-      code: CashOrderFailureCode;
+      code: CheckoutOrderFailureCode;
       fieldErrors: CheckoutActionFieldErrors;
     };
 
@@ -102,7 +106,7 @@ type NormalizedMerchantOrderTransitionResult =
 export type CheckoutActionCoreDependencies = {
   readSessionCookie: () => MaybePromise<unknown>;
   requireCustomerSession: (rawToken: unknown) => MaybePromise<AuthSessionContext>;
-  createCashOrder: (
+  createCheckoutOrder: (
     customerId: string,
     payload: CheckoutOrderPayload,
   ) => MaybePromise<unknown>;
@@ -122,7 +126,7 @@ const CHECKOUT_ACTION_ITEM_FIELD_NAME_SET = new Set<string>(
   CHECKOUT_ACTION_ITEM_FIELD_NAMES,
 );
 const CHECKOUT_PAYMENT_METHOD_SET = new Set<string>(CHECKOUT_PAYMENT_METHODS);
-const CASH_ORDER_FAILURE_CODE_SET = new Set<string>(
+const CHECKOUT_ORDER_FAILURE_CODE_SET = new Set<string>(
   Object.keys(CASH_ORDER_ERROR_MESSAGES),
 );
 const MERCHANT_ORDER_TRANSITION_ACTION_FIELD_NAME_SET = new Set<string>(
@@ -148,12 +152,17 @@ export function createCheckoutActionCore(
         return errorState(guard.message);
       }
 
-      const { input, values } = getCheckoutFormSubmission(formData);
+      const { input, values, fieldErrors: submissionFieldErrors } =
+        getCheckoutFormSubmission(formData);
       const parsedPayload = checkoutOrderPayloadSchema.safeParse(input);
 
-      if (!parsedPayload.success) {
+      if (!parsedPayload.success || hasFieldErrors(submissionFieldErrors)) {
+        const errors = parsedPayload.success
+          ? { fieldErrors: {}, formErrors: [] }
+          : formatCheckoutValidationErrors(parsedPayload.error);
+
         return validationFailureState(
-          formatCheckoutValidationErrors(parsedPayload.error),
+          mergeCheckoutValidationErrors(errors, submissionFieldErrors),
           values,
         );
       }
@@ -161,7 +170,7 @@ export function createCheckoutActionCore(
       let serviceResult: unknown;
 
       try {
-        serviceResult = await dependencies.createCashOrder(
+        serviceResult = await dependencies.createCheckoutOrder(
           guard.auth.user.id,
           parsedPayload.data,
         );
@@ -169,14 +178,14 @@ export function createCheckoutActionCore(
         return orderCreationFailureState(values);
       }
 
-      const normalizedResult = normalizeCashOrderResult(serviceResult);
+      const normalizedResult = normalizeCheckoutOrderResult(serviceResult);
 
       if (!normalizedResult) {
         return orderCreationFailureState(values);
       }
 
       if (!normalizedResult.ok) {
-        return cashOrderFailureState(normalizedResult, values);
+        return checkoutOrderFailureState(normalizedResult, values);
       }
 
       return {
@@ -282,11 +291,14 @@ async function requireMerchantOrFailure(
 function getCheckoutFormSubmission(formData: FormData): {
   input: CheckoutPayloadCandidate;
   values: CheckoutActionValues;
+  fieldErrors: CheckoutActionFieldErrors;
 } {
   const input: CheckoutPayloadCandidate = { items: [] };
   const values: CheckoutActionValues = {};
+  const fieldErrors: CheckoutActionFieldErrors = {};
   const itemsByIndex = new Map<number, Record<string, unknown>>();
   const itemValuesByIndex = new Map<number, CheckoutActionItemValues>();
+  const seenItemKeys = new Set<string>();
 
   for (const fieldName of CHECKOUT_ACTION_FIELD_NAMES) {
     const value = getStringFormValue(formData, fieldName);
@@ -300,6 +312,27 @@ function getCheckoutFormSubmission(formData: FormData): {
 
     if (itemKey) {
       const stringValue = stringifyFormValue(value);
+      const normalizedItemKey = `${itemKey.index}.${itemKey.field}`;
+
+      if (seenItemKeys.has(normalizedItemKey)) {
+        const fieldPath = `items.${itemKey.index}.${itemKey.field}`;
+        addSubmissionFieldError(
+          fieldErrors,
+          fieldPath,
+          CHECKOUT_FORBIDDEN_FIELD_MESSAGE,
+        );
+
+        if (isCheckoutActionItemFieldName(itemKey.field)) {
+          const itemValues = itemValuesByIndex.get(itemKey.index) ?? {};
+          itemValues[itemKey.field] = "";
+          itemValuesByIndex.set(itemKey.index, itemValues);
+        }
+
+        continue;
+      }
+
+      seenItemKeys.add(normalizedItemKey);
+
       const item = itemsByIndex.get(itemKey.index) ?? {};
       item[itemKey.field] = coerceCheckoutItemValue(itemKey.field, stringValue);
       itemsByIndex.set(itemKey.index, item);
@@ -330,7 +363,7 @@ function getCheckoutFormSubmission(formData: FormData): {
     values.items = sortIndexedRecords(itemValuesByIndex);
   }
 
-  return { input, values };
+  return { input, values, fieldErrors };
 }
 
 function getMerchantOrderTransitionFormSubmission(formData: FormData): {
@@ -360,6 +393,34 @@ function getMerchantOrderTransitionFormSubmission(formData: FormData): {
   return { input, values };
 }
 
+function mergeCheckoutValidationErrors(
+  errors: CheckoutValidationErrors,
+  fieldErrors: CheckoutActionFieldErrors,
+): CheckoutValidationErrors {
+  if (!hasFieldErrors(fieldErrors)) {
+    return errors;
+  }
+
+  const mergedFieldErrors: CheckoutActionFieldErrors = { ...errors.fieldErrors };
+
+  for (const [field, messages] of Object.entries(fieldErrors)) {
+    mergedFieldErrors[field] = [...(mergedFieldErrors[field] ?? []), ...messages];
+  }
+
+  return {
+    fieldErrors: mergedFieldErrors,
+    formErrors: errors.formErrors,
+  };
+}
+
+function addSubmissionFieldError(
+  fieldErrors: CheckoutActionFieldErrors,
+  field: string,
+  message: string,
+) {
+  fieldErrors[field] = [...(fieldErrors[field] ?? []), message];
+}
+
 function validationFailureState(
   errors: CheckoutValidationErrors,
   values: CheckoutActionValues,
@@ -371,8 +432,8 @@ function validationFailureState(
   });
 }
 
-function cashOrderFailureState(
-  failure: Extract<NormalizedCashOrderResult, { ok: false }>,
+function checkoutOrderFailureState(
+  failure: Extract<NormalizedCheckoutOrderResult, { ok: false }>,
   values: CheckoutActionValues,
 ): CheckoutActionState {
   const message = CASH_ORDER_ERROR_MESSAGES[failure.code];
@@ -470,7 +531,9 @@ function errorState(
   };
 }
 
-function normalizeCashOrderResult(result: unknown): NormalizedCashOrderResult | null {
+function normalizeCheckoutOrderResult(
+  result: unknown,
+): NormalizedCheckoutOrderResult | null {
   if (!isRecord(result)) {
     return null;
   }
@@ -501,7 +564,7 @@ function normalizeCashOrderResult(result: unknown): NormalizedCashOrderResult | 
     };
   }
 
-  if (result.ok === false && isCashOrderFailureCode(result.code)) {
+  if (result.ok === false && isCheckoutOrderFailureCode(result.code)) {
     return {
       ok: false,
       code: result.code,
@@ -635,8 +698,8 @@ function isAllowedServiceFieldErrorKey(field: string) {
   );
 }
 
-function isCashOrderFailureCode(code: unknown): code is CashOrderFailureCode {
-  return typeof code === "string" && CASH_ORDER_FAILURE_CODE_SET.has(code);
+function isCheckoutOrderFailureCode(code: unknown): code is CheckoutOrderFailureCode {
+  return typeof code === "string" && CHECKOUT_ORDER_FAILURE_CODE_SET.has(code);
 }
 
 function isMerchantOrderTransitionFailureCode(

@@ -1,6 +1,4 @@
-import { defineConfig } from "vitest/config";
-
-export default defineConfig({
+const vitestConfig = {
   root: process.cwd(),
   test: {
     environment: "node",
@@ -11,4 +9,6 @@ export default defineConfig({
       "e2e/**/*.test.ts",
     ],
   },
-});
+};
+
+export default vitestConfig;

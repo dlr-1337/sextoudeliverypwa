@@ -14,9 +14,12 @@ import {
   MERCHANT_ORDER_TRANSITION_NOTE_MAX_LENGTH,
   MERCHANT_ORDER_TRANSITION_SELECT,
   ORDER_STATUS_VALUES,
+  PUBLIC_ORDER_READ_SELECT,
   parseMerchantOrderTransitionInput,
   parseMerchantOrderTransitionOwnerId,
   type CashOrderFailureCode,
+  type CashOrderResult,
+  type CreatedCashOrder,
   type MerchantOrderDetailFailureCode,
   type MerchantOrderDetailRow,
   type MerchantOrderListFailureCode,
@@ -28,6 +31,12 @@ import {
   type OrderStatusValue,
   type PublicOrderReadRow,
 } from "./service-core";
+import type {
+  PaymentGatewayProvider,
+  PaymentInitiationInput,
+  PaymentInitiationResult,
+  PaymentInitiationSuccessData,
+} from "../payments/types";
 import type { CheckoutOrderPayload } from "./schemas";
 
 const NOW = new Date("2026-04-27T12:30:00.000Z");
@@ -425,6 +434,558 @@ describe("cash order service core", () => {
     expectNoWrites(db);
   });
 
+  it("creates CASH through the generic checkout path without provider/config helpers", async () => {
+    const db = createFakeOrderDb({
+      establishments: [buildEstablishment({ deliveryFee: "5.50" })],
+      products: [buildProduct()],
+    });
+    const getPaymentGatewayProvider = vi.fn((): PaymentGatewayProvider => {
+      throw new Error("CASH must not request a payment provider");
+    });
+    const generateInternalOrderId = vi.fn(() => "order-online-should-not-run");
+    const getAppBaseUrl = vi.fn(() => "https://app.example.test");
+    const service = createOrderServiceCore({
+      db,
+      now: () => NOW,
+      generatePublicCode: () => "PED-20260427-CASH02",
+      generateInternalOrderId,
+      getPaymentGatewayProvider,
+      getAppBaseUrl,
+    });
+
+    const result = await service.createCheckoutOrder(
+      " customer-a ",
+      checkoutPayload({ paymentMethod: "CASH" }),
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        publicCode: "PED-20260427-CASH02",
+        redirectPath: "/pedido/PED-20260427-CASH02",
+      },
+    });
+    expect(getPaymentGatewayProvider).not.toHaveBeenCalled();
+    expect(generateInternalOrderId).not.toHaveBeenCalled();
+    expect(getAppBaseUrl).not.toHaveBeenCalled();
+    expect(db.data.payments).toEqual([
+      expect.objectContaining({
+        method: "CASH",
+        status: "MANUAL_CASH_ON_DELIVERY",
+        provider: null,
+        providerPaymentId: null,
+        providerStatus: null,
+        providerPayload: null,
+        checkoutUrl: null,
+        pixQrCode: null,
+        pixCopyPaste: null,
+        pixExpiresAt: null,
+        cardBrand: null,
+        cardLast4: null,
+      }),
+    ]);
+  });
+
+  it("persists pending PIX payments with safe provider fields after provider success", async () => {
+    const db = createFakeOrderDb({
+      establishments: [buildEstablishment({ deliveryFee: "5.50" })],
+      products: [buildProduct()],
+    });
+    const initiatePayment = vi.fn(async (input: unknown): Promise<PaymentInitiationResult> => {
+      expect(input).toEqual({
+        method: "PIX",
+        internalOrderId: "order-online-pix",
+        publicOrderCode: "PED-20260427-PIX01",
+        establishmentId: "est-a",
+        amountCents: 2540,
+        currency: "BRL",
+        customer: {
+          name: "Maria Cliente",
+          phone: "11999999999",
+          email: null,
+        },
+        requestedAt: NOW,
+        expiresAt: new Date("2026-04-27T13:00:00.000Z"),
+      });
+
+      return pixInitiationSuccess({
+        providerPaymentId: "fake_dev_pix_safe_001",
+        expiresAt: new Date("2026-04-27T13:00:00.000Z"),
+      });
+    });
+    const service = createOrderServiceCore({
+      db,
+      now: () => NOW,
+      generatePublicCode: () => "PED-20260427-PIX01",
+      generateInternalOrderId: () => "order-online-pix",
+      getPaymentGatewayProvider: () => ({
+        provider: "fake-dev",
+        initiatePayment,
+      }),
+    });
+
+    const result = await service.createCheckoutOrder(
+      "customer-a",
+      checkoutPayload({ paymentMethod: "PIX" }),
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        publicCode: "PED-20260427-PIX01",
+        redirectPath: "/pedido/PED-20260427-PIX01",
+      },
+    });
+    expect(initiatePayment).toHaveBeenCalledTimes(1);
+    expect(db.data.orders).toEqual([
+      expect.objectContaining({
+        id: "order-online-pix",
+        paymentMethod: "PIX",
+        paymentStatus: "PENDING",
+        total: "25.40",
+      }),
+    ]);
+    expect(db.data.payments).toEqual([
+      expect.objectContaining({
+        orderId: "order-online-pix",
+        method: "PIX",
+        status: "PENDING",
+        amount: "25.40",
+        provider: "fake-dev",
+        providerPaymentId: "fake_dev_pix_safe_001",
+        providerStatus: "pending",
+        providerPayload: null,
+        checkoutUrl: null,
+        pixQrCode: "fake-dev-pix://fake_dev_pix_safe_001",
+        pixCopyPaste: "FAKEDEVPIX|fake_dev_pix_safe_001",
+        pixExpiresAt: new Date("2026-04-27T13:00:00.000Z"),
+        cardBrand: null,
+        cardLast4: null,
+        paidAt: null,
+        failedAt: null,
+      }),
+    ]);
+  });
+
+  it("persists pending CARD hosted checkout fields without storing card data", async () => {
+    const db = createFakeOrderDb({
+      establishments: [buildEstablishment({ deliveryFee: "0.00" })],
+      products: [buildProduct({ price: "42.00" })],
+    });
+    const checkoutUrl = "https://payments.example.test/checkout/card-safe-001";
+    const initiatePayment = vi.fn(async (input: unknown): Promise<PaymentInitiationResult> => {
+      expect(input).toEqual({
+        method: "CARD",
+        internalOrderId: "order-online-card",
+        publicOrderCode: "PED-20260427-CARD01",
+        establishmentId: "est-a",
+        amountCents: 4200,
+        currency: "BRL",
+        customer: {
+          name: "Maria Cliente",
+          phone: "11999999999",
+          email: null,
+        },
+        requestedAt: NOW,
+        successUrl: "https://app.example.test/pedido/PED-20260427-CARD01",
+        cancelUrl: "https://app.example.test/pedido/PED-20260427-CARD01",
+      });
+
+      return cardInitiationSuccess({
+        providerPaymentId: "fake_dev_card_safe_001",
+        checkoutUrl,
+      });
+    });
+    const service = createOrderServiceCore({
+      db,
+      now: () => NOW,
+      generatePublicCode: () => "PED-20260427-CARD01",
+      generateInternalOrderId: () => "order-online-card",
+      getAppBaseUrl: () => "https://app.example.test/base/path?ignored=true",
+      getPaymentGatewayProvider: () => ({
+        provider: "fake-dev",
+        initiatePayment,
+      }),
+    });
+
+    const result = await service.createCheckoutOrder(
+      "customer-a",
+      checkoutPayload({ paymentMethod: "CARD" }),
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        publicCode: "PED-20260427-CARD01",
+        redirectPath: "/pedido/PED-20260427-CARD01",
+      },
+    });
+    expect(db.data.orders).toEqual([
+      expect.objectContaining({
+        id: "order-online-card",
+        paymentMethod: "CARD",
+        paymentStatus: "PENDING",
+        total: "42.00",
+      }),
+    ]);
+    expect(db.data.payments).toEqual([
+      expect.objectContaining({
+        orderId: "order-online-card",
+        method: "CARD",
+        status: "PENDING",
+        amount: "42.00",
+        provider: "fake-dev",
+        providerPaymentId: "fake_dev_card_safe_001",
+        providerStatus: "pending",
+        providerPayload: null,
+        checkoutUrl,
+        pixQrCode: null,
+        pixCopyPaste: null,
+        pixExpiresAt: null,
+        cardBrand: null,
+        cardLast4: null,
+      }),
+    ]);
+    const persisted = JSON.stringify(db.data);
+    for (const forbiddenFragment of [
+      "cardNumber",
+      "cvv",
+      "expiry",
+      "token",
+      "4111111111111111",
+    ]) {
+      expect(persisted).not.toContain(forbiddenFragment);
+    }
+  });
+
+  it("fails online checkout safely before provider calls for invalid identifiers and app URLs", async () => {
+    const scenarios = [
+      {
+        payload: checkoutPayload({ paymentMethod: "PIX" }),
+        generatePublicCode: () => "",
+        generateInternalOrderId: () => "order-online-pix",
+        getAppBaseUrl: () => "https://app.example.test",
+        code: "PUBLIC_CODE_COLLISION",
+        expectedTransactions: 2,
+      },
+      {
+        payload: checkoutPayload({ paymentMethod: "PIX" }),
+        generatePublicCode: () => "PED-20260427-PIX02",
+        generateInternalOrderId: () => "",
+        getAppBaseUrl: () => "https://app.example.test",
+        code: "INTERNAL_ORDER_ID_INVALID",
+        expectedTransactions: 1,
+      },
+      {
+        payload: checkoutPayload({ paymentMethod: "CARD" }),
+        generatePublicCode: () => "PED-20260427-CARD02",
+        generateInternalOrderId: () => "order-online-card",
+        getAppBaseUrl: () => "not-a-url",
+        code: "INVALID_APP_BASE_URL",
+        expectedTransactions: 1,
+      },
+    ] satisfies Array<{
+      payload: CheckoutOrderPayload;
+      generatePublicCode: () => string;
+      generateInternalOrderId: () => string;
+      getAppBaseUrl: () => string;
+      code: CashOrderFailureCode;
+      expectedTransactions: number;
+    }>;
+
+    for (const scenario of scenarios) {
+      const db = createFakeOrderDb({
+        establishments: [buildEstablishment()],
+        products: [buildProduct()],
+      });
+      const getPaymentGatewayProvider = vi.fn((): PaymentGatewayProvider => ({
+        provider: "fake-dev",
+        initiatePayment: vi.fn(),
+      }));
+      const service = createOrderServiceCore({
+        db,
+        now: () => NOW,
+        maxPublicCodeAttempts: 2,
+        generatePublicCode: scenario.generatePublicCode,
+        generateInternalOrderId: scenario.generateInternalOrderId,
+        getAppBaseUrl: scenario.getAppBaseUrl,
+        getPaymentGatewayProvider,
+      });
+
+      const failure = expectFailure(
+        await service.createCheckoutOrder("customer-a", scenario.payload),
+        scenario.code,
+      );
+
+      expect(failure.retryable).toBe(true);
+      expect(db.calls.transactionCount).toBe(scenario.expectedTransactions);
+      expect(getPaymentGatewayProvider).not.toHaveBeenCalled();
+      expectNoWrites(db);
+    }
+  });
+
+  it("maps provider config, rejection and malformed successes to safe no-write failures", async () => {
+    const scenarios = [
+      {
+        code: "PAYMENT_PROVIDER_CONFIG_INVALID",
+        getPaymentGatewayProvider: () => {
+          throw new Error("FAKE_PAYMENT_WEBHOOK_SECRET raw config value");
+        },
+      },
+      {
+        code: "PAYMENT_PROVIDER_UNAVAILABLE",
+        getPaymentGatewayProvider: () => ({
+          provider: "fake-dev",
+          initiatePayment: async () => {
+            throw new Error("provider raw timeout token");
+          },
+        }),
+      },
+      {
+        code: "PAYMENT_PROVIDER_REJECTED",
+        getPaymentGatewayProvider: () => ({
+          provider: "fake-dev",
+          initiatePayment: async (): Promise<PaymentInitiationResult> => ({
+            ok: false,
+            code: "PAYMENT_PROVIDER_REJECTED",
+            message: "raw provider rejection should not leak",
+            retryable: false,
+          }),
+        }),
+      },
+      {
+        code: "PAYMENT_PROVIDER_MALFORMED_RESULT",
+        getPaymentGatewayProvider: () => ({
+          provider: "fake-dev",
+          initiatePayment: async () => cardInitiationSuccess(),
+        }),
+      },
+      {
+        code: "PAYMENT_PROVIDER_MALFORMED_RESULT",
+        getPaymentGatewayProvider: () => ({
+          provider: "fake-dev",
+          initiatePayment: async () =>
+            pixInitiationSuccess({ providerPaymentId: "" }),
+        }),
+      },
+    ] satisfies Array<{
+      code: CashOrderFailureCode;
+      getPaymentGatewayProvider: () => PaymentGatewayProvider;
+    }>;
+
+    for (const scenario of scenarios) {
+      const db = createFakeOrderDb({
+        establishments: [buildEstablishment()],
+        products: [buildProduct()],
+      });
+      const service = createOrderServiceCore({
+        db,
+        now: () => NOW,
+        generatePublicCode: () => "PED-20260427-PIX03",
+        generateInternalOrderId: () => "order-online-pix",
+        getPaymentGatewayProvider: scenario.getPaymentGatewayProvider,
+      });
+
+      const failure = expectFailure(
+        await service.createCheckoutOrder(
+          "customer-a",
+          checkoutPayload({ paymentMethod: "PIX" }),
+        ),
+        scenario.code,
+      );
+
+      expect(JSON.stringify(failure)).not.toContain("FAKE_PAYMENT_WEBHOOK_SECRET");
+      expect(JSON.stringify(failure)).not.toContain("raw provider");
+      expect(db.calls.orderCreate).toEqual([]);
+      expectNoWrites(db);
+    }
+  });
+
+  it("does not call the provider when online checkout fails store, product or total validation", async () => {
+    for (const scenario of [
+      {
+        db: createFakeOrderDb({ establishments: [], products: [buildProduct()] }),
+        code: "STORE_UNAVAILABLE",
+      },
+      {
+        db: createFakeOrderDb({
+          establishments: [buildEstablishment({ status: "INACTIVE" })],
+          products: [buildProduct()],
+        }),
+        code: "STORE_UNAVAILABLE",
+      },
+      {
+        db: createFakeOrderDb({
+          establishments: [buildEstablishment({ deliveryFee: "not-money" })],
+          products: [buildProduct()],
+        }),
+        code: "STORE_UNAVAILABLE",
+      },
+      {
+        db: createFakeOrderDb({
+          establishments: [buildEstablishment()],
+          products: [],
+        }),
+        code: "PRODUCT_UNAVAILABLE",
+      },
+      {
+        db: createFakeOrderDb({
+          establishments: [buildEstablishment()],
+          products: [buildProduct({ price: "not-money" })],
+        }),
+        code: "PRODUCT_UNAVAILABLE",
+      },
+    ] satisfies Array<{
+      db: ReturnType<typeof createFakeOrderDb>;
+      code: CashOrderFailureCode;
+    }>) {
+      const getPaymentGatewayProvider = vi.fn((): PaymentGatewayProvider => ({
+        provider: "fake-dev",
+        initiatePayment: vi.fn(),
+      }));
+      const service = createOrderServiceCore({
+        db: scenario.db,
+        now: () => NOW,
+        generatePublicCode: () => "PED-20260427-PIX04",
+        generateInternalOrderId: () => "order-online-pix",
+        getPaymentGatewayProvider,
+      });
+
+      expectFailure(
+        await service.createCheckoutOrder(
+          "customer-a",
+          checkoutPayload({ paymentMethod: "PIX" }),
+        ),
+        scenario.code,
+      );
+
+      expect(getPaymentGatewayProvider).not.toHaveBeenCalled();
+      expectNoWrites(scenario.db);
+    }
+  });
+
+  it("rolls back online writes on DB failures and retries public-code collisions with fresh provider ids", async () => {
+    for (const failOn of ["orderItemCreateMany", "paymentCreate", "historyCreate"] as const) {
+      const db = createFakeOrderDb({
+        establishments: [buildEstablishment()],
+        products: [buildProduct()],
+        failOn,
+      });
+      const initiatePayment = vi.fn(async () =>
+        pixInitiationSuccess({ providerPaymentId: `fake_dev_pix_${failOn}` }),
+      );
+      const service = createOrderServiceCore({
+        db,
+        now: () => NOW,
+        generatePublicCode: () => "PED-20260427-ROLLBK",
+        generateInternalOrderId: () => "order-online-pix",
+        getPaymentGatewayProvider: () => ({
+          provider: "fake-dev",
+          initiatePayment,
+        }),
+      });
+
+      const failure = expectFailure(
+        await service.createCheckoutOrder(
+          "customer-a",
+          checkoutPayload({ paymentMethod: "PIX" }),
+        ),
+        "TRANSACTION_FAILED",
+      );
+
+      expect(failure.retryable).toBe(true);
+      expect(initiatePayment).toHaveBeenCalledTimes(1);
+      expectNoWrites(db);
+    }
+
+    const collisionDb = createFakeOrderDb({
+      establishments: [buildEstablishment()],
+      products: [buildProduct()],
+      publicCodeCollisionsBeforeSuccess: 1,
+    });
+    const generatePublicCode = vi
+      .fn()
+      .mockReturnValueOnce("PED-20260427-COLL01")
+      .mockReturnValueOnce("PED-20260427-COLL02");
+    const generateInternalOrderId = vi
+      .fn()
+      .mockReturnValueOnce("order-online-collision-1")
+      .mockReturnValueOnce("order-online-collision-2");
+    const initiatePayment = vi.fn(async (input: PaymentInitiationInput) =>
+      pixInitiationSuccess({
+        providerPaymentId: `fake_dev_pix_${input.publicOrderCode.toLowerCase()}`,
+      }),
+    );
+    const collisionService = createOrderServiceCore({
+      db: collisionDb,
+      now: () => NOW,
+      maxPublicCodeAttempts: 2,
+      generatePublicCode,
+      generateInternalOrderId,
+      getPaymentGatewayProvider: () => ({
+        provider: "fake-dev",
+        initiatePayment,
+      }),
+    });
+
+    const result = await collisionService.createCheckoutOrder(
+      "customer-a",
+      checkoutPayload({ paymentMethod: "PIX" }),
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        publicCode: "PED-20260427-COLL02",
+        redirectPath: "/pedido/PED-20260427-COLL02",
+      },
+    });
+    expect(generatePublicCode).toHaveBeenCalledTimes(2);
+    expect(generateInternalOrderId).toHaveBeenCalledTimes(2);
+    expect(initiatePayment).toHaveBeenCalledTimes(2);
+    expect(collisionDb.data.orders).toEqual([
+      expect.objectContaining({
+        id: "order-online-collision-2",
+        publicCode: "PED-20260427-COLL02",
+      }),
+    ]);
+    expect(collisionDb.data.payments).toEqual([
+      expect.objectContaining({
+        orderId: "order-online-collision-2",
+        providerPaymentId: "fake_dev_pix_ped-20260427-coll02",
+      }),
+    ]);
+  });
+
+  it("uses a narrow public payment projection for safe instruction fields", () => {
+    expect(PUBLIC_ORDER_READ_SELECT.payment.select).toEqual({
+      method: true,
+      status: true,
+      amount: true,
+      checkoutUrl: true,
+      pixQrCode: true,
+      pixCopyPaste: true,
+      pixExpiresAt: true,
+      paidAt: true,
+      failedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    });
+
+    for (const forbiddenField of [
+      "provider",
+      "providerPaymentId",
+      "providerStatus",
+      "providerPayload",
+      "cardBrand",
+      "cardLast4",
+    ]) {
+      expect(PUBLIC_ORDER_READ_SELECT.payment.select).not.toHaveProperty(
+        forbiddenField,
+      );
+    }
+  });
+
   it("projects public order reads without customer, internal or provider fields", async () => {
     const db = createFakeOrderDb({
       establishments: [buildEstablishment()],
@@ -466,6 +1027,7 @@ describe("cash order service core", () => {
         method: "CASH",
         status: "MANUAL_CASH_ON_DELIVERY",
         amount: "25.40",
+        instructions: null,
         paidAt: null,
         failedAt: null,
         createdAt: NOW,
@@ -494,9 +1056,187 @@ describe("cash order service core", () => {
       "payment-internal",
       "provider-secret",
       "provider-payment-id",
+      "provider-status",
+      "card-brand",
+      "card-last4",
+      "4111111111111111",
+      "card-token",
+      "12/30",
       "changed-by-user",
     ]) {
       expect(serialized).not.toContain(forbiddenFragment);
+    }
+  });
+
+  it("projects safe PIX instructions without provider or card internals", async () => {
+    const expiresAt = new Date("2026-04-27T13:00:00.000Z");
+    const db = createFakeOrderDb({
+      establishments: [buildEstablishment()],
+      products: [buildProduct()],
+      publicOrders: [
+        buildPublicOrderReadRow({
+          paymentMethod: "PIX",
+          paymentStatus: "PENDING",
+          payment: buildPublicOrderPaymentReadRow({
+            method: "PIX",
+            status: "PENDING",
+            checkoutUrl: null,
+            pixQrCode: "pix-qr-code-safe",
+            pixCopyPaste: "pix-copy-paste-safe",
+            pixExpiresAt: expiresAt,
+          }),
+        }),
+      ],
+    });
+    const service = createOrderServiceCore({ db });
+
+    const order = await service.getPublicOrderByCode("PED-20260427-SAFE01");
+
+    expect(order?.payment?.instructions).toEqual({
+      method: "PIX",
+      qrCode: "pix-qr-code-safe",
+      copyPaste: "pix-copy-paste-safe",
+      expiresAt,
+    });
+    expect(Object.keys(order?.payment?.instructions ?? {})).toEqual([
+      "method",
+      "qrCode",
+      "copyPaste",
+      "expiresAt",
+    ]);
+
+    const serialized = JSON.stringify(order);
+    for (const forbiddenFragment of [
+      "provider-secret",
+      "provider-payment-id",
+      "provider-status",
+      "card-brand",
+      "card-last4",
+      "4111111111111111",
+      "card-token",
+      "12/30",
+    ]) {
+      expect(serialized).not.toContain(forbiddenFragment);
+    }
+  });
+
+  it("projects safe CARD hosted checkout instructions without card details", async () => {
+    const checkoutUrl = "https://payments.example.test/checkout/card-safe-001";
+    const db = createFakeOrderDb({
+      establishments: [buildEstablishment()],
+      products: [buildProduct()],
+      publicOrders: [
+        buildPublicOrderReadRow({
+          paymentMethod: "CARD",
+          paymentStatus: "PENDING",
+          payment: buildPublicOrderPaymentReadRow({
+            method: "CARD",
+            status: "PENDING",
+            checkoutUrl,
+            pixQrCode: null,
+            pixCopyPaste: null,
+            pixExpiresAt: null,
+          }),
+        }),
+      ],
+    });
+    const service = createOrderServiceCore({ db });
+
+    const order = await service.getPublicOrderByCode("PED-20260427-SAFE01");
+
+    expect(order?.payment?.instructions).toEqual({
+      method: "CARD",
+      checkoutUrl,
+    });
+    expect(Object.keys(order?.payment?.instructions ?? {})).toEqual([
+      "method",
+      "checkoutUrl",
+    ]);
+
+    const serialized = JSON.stringify(order);
+    for (const forbiddenFragment of [
+      "card-brand",
+      "card-last4",
+      "4111111111111111",
+      "cvv",
+      "card-token",
+      "provider-secret",
+      "provider-payment-id",
+      "provider-status",
+    ]) {
+      expect(serialized).not.toContain(forbiddenFragment);
+    }
+  });
+
+  it("falls back to null public instructions for incomplete or malformed PIX fields", async () => {
+    const validExpiresAt = new Date("2026-04-27T13:00:00.000Z");
+    const scenarios = [
+      { paymentOverrides: { pixQrCode: null } },
+      { paymentOverrides: { pixCopyPaste: "" } },
+      { paymentOverrides: { pixExpiresAt: null } },
+      { paymentOverrides: { pixExpiresAt: new Date("invalid-date") } },
+    ];
+
+    for (const scenario of scenarios) {
+      const db = createFakeOrderDb({
+        establishments: [buildEstablishment()],
+        products: [buildProduct()],
+        publicOrders: [
+          buildPublicOrderReadRow({
+            paymentMethod: "PIX",
+            paymentStatus: "PENDING",
+            payment: buildPublicOrderPaymentReadRow({
+              method: "PIX",
+              status: "PENDING",
+              checkoutUrl: null,
+              pixQrCode: "pix-qr-code-safe",
+              pixCopyPaste: "pix-copy-paste-safe",
+              pixExpiresAt: validExpiresAt,
+              ...scenario.paymentOverrides,
+            }),
+          }),
+        ],
+      });
+      const service = createOrderServiceCore({ db });
+
+      const order = await service.getPublicOrderByCode("PED-20260427-SAFE01");
+
+      expect(order?.payment?.instructions).toBeNull();
+    }
+  });
+
+  it("falls back to null public instructions for unsafe CARD checkout URLs", async () => {
+    for (const checkoutUrl of [
+      null,
+      "",
+      "/checkout/card-safe-001",
+      "ftp://payments.example.test/checkout/card-safe-001",
+      "javascript:alert(1)",
+      "https://user:pass@payments.example.test/checkout/card-safe-001",
+    ]) {
+      const db = createFakeOrderDb({
+        establishments: [buildEstablishment()],
+        products: [buildProduct()],
+        publicOrders: [
+          buildPublicOrderReadRow({
+            paymentMethod: "CARD",
+            paymentStatus: "PENDING",
+            payment: buildPublicOrderPaymentReadRow({
+              method: "CARD",
+              status: "PENDING",
+              checkoutUrl,
+              pixQrCode: null,
+              pixCopyPaste: null,
+              pixExpiresAt: null,
+            }),
+          }),
+        ],
+      });
+      const service = createOrderServiceCore({ db });
+
+      const order = await service.getPublicOrderByCode("PED-20260427-SAFE01");
+
+      expect(order?.payment?.instructions).toBeNull();
     }
   });
 
@@ -2304,6 +3044,39 @@ function buildProduct(overrides: Partial<FakeProduct> = {}): FakeProduct {
   };
 }
 
+function buildPublicOrderPaymentReadRow(
+  overrides: Partial<Record<string, unknown>> = {},
+): NonNullable<PublicOrderReadRow["payment"]> {
+  return {
+    id: "payment-internal",
+    orderId: "order-internal",
+    method: "CASH",
+    status: "MANUAL_CASH_ON_DELIVERY",
+    amount: "25.40",
+    provider: "provider-secret",
+    providerPaymentId: "provider-payment-id",
+    providerStatus: "provider-status",
+    providerPayload: {
+      secret: "provider-secret",
+      pan: "4111111111111111",
+      cvv: "123",
+      expiry: "12/30",
+      token: "card-token",
+    },
+    checkoutUrl: null,
+    pixQrCode: null,
+    pixCopyPaste: null,
+    pixExpiresAt: null,
+    cardBrand: "card-brand",
+    cardLast4: "card-last4",
+    paidAt: null,
+    failedAt: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  } as NonNullable<PublicOrderReadRow["payment"]>;
+}
+
 function buildPublicOrderReadRow(
   overrides: Partial<PublicOrderReadRow> = {},
 ): PublicOrderReadRow {
@@ -2343,21 +3116,7 @@ function buildPublicOrderReadRow(
         createdAt: NOW,
       } as PublicOrderReadRow["items"][number],
     ],
-    payment: {
-      id: "payment-internal",
-      orderId: "order-internal",
-      method: "CASH",
-      status: "MANUAL_CASH_ON_DELIVERY",
-      amount: "25.40",
-      provider: "provider-secret",
-      providerPaymentId: "provider-payment-id",
-      providerStatus: "provider-status",
-      providerPayload: { secret: "provider-secret" },
-      paidAt: null,
-      failedAt: null,
-      createdAt: NOW,
-      updatedAt: NOW,
-    } as PublicOrderReadRow["payment"],
+    payment: buildPublicOrderPaymentReadRow(),
     statusHistory: [
       {
         id: "history-internal",
@@ -2532,8 +3291,90 @@ function checkoutPayload(
   };
 }
 
+function pixInitiationSuccess(
+  overrides: Partial<{
+    providerPaymentId: string;
+    expiresAt: Date;
+    qrCode: string;
+    copyPaste: string;
+  }> = {},
+): PaymentInitiationResult {
+  const providerPaymentId = overrides.providerPaymentId ?? "fake_dev_pix_default";
+  const expiresAt = overrides.expiresAt ?? new Date("2026-04-27T13:00:00.000Z");
+  const qrCode = overrides.qrCode ?? `fake-dev-pix://${providerPaymentId}`;
+  const copyPaste = overrides.copyPaste ?? `FAKEDEVPIX|${providerPaymentId}`;
+
+  return {
+    ok: true,
+    data: {
+      method: "PIX",
+      publicInstructions: {
+        method: "PIX",
+        qrCode,
+        copyPaste,
+        expiresAtIso: expiresAt.toISOString(),
+        checkoutUrl: null,
+      },
+      persistence: {
+        method: "PIX",
+        status: "PENDING",
+        provider: "fake-dev",
+        providerPaymentId,
+        providerStatus: "pending",
+        providerPayload: null,
+        checkoutUrl: null,
+        pixQrCode: qrCode,
+        pixCopyPaste: copyPaste,
+        pixExpiresAt: expiresAt,
+        cardBrand: null,
+        cardLast4: null,
+        paidAt: null,
+        failedAt: null,
+      },
+    } satisfies Extract<PaymentInitiationSuccessData, { method: "PIX" }>,
+  };
+}
+
+function cardInitiationSuccess(
+  overrides: Partial<{
+    providerPaymentId: string;
+    checkoutUrl: string;
+  }> = {},
+): PaymentInitiationResult {
+  const providerPaymentId = overrides.providerPaymentId ?? "fake_dev_card_default";
+  const checkoutUrl =
+    overrides.checkoutUrl ?? "https://payments.example.test/checkout/default";
+
+  return {
+    ok: true,
+    data: {
+      method: "CARD",
+      publicInstructions: {
+        method: "CARD",
+        checkoutUrl,
+      },
+      persistence: {
+        method: "CARD",
+        status: "PENDING",
+        provider: "fake-dev",
+        providerPaymentId,
+        providerStatus: "pending",
+        providerPayload: null,
+        checkoutUrl,
+        pixQrCode: null,
+        pixCopyPaste: null,
+        pixExpiresAt: null,
+        cardBrand: null,
+        cardLast4: null,
+        paidAt: null,
+        failedAt: null,
+      },
+    } satisfies Extract<PaymentInitiationSuccessData, { method: "CARD" }>,
+  };
+}
+
 function expectFailure(
-  result: Awaited<ReturnType<ReturnType<typeof createCashOrderCore>["createCashOrder"]>>,
+  result: CashOrderResult<CreatedCashOrder>,
   code: CashOrderFailureCode,
 ) {
   expect(result).toMatchObject({

@@ -97,7 +97,7 @@ describe("public order tracking route source boundaries", () => {
       "getOrderStatusLabel",
       "getPaymentMethodLabel",
       "getPaymentStatusLabel",
-      "getManualCashPaymentDescription",
+      "getPublicPaymentSummaryCopy",
       "formatPublicOrderMoney",
       "formatPublicOrderDateTime",
       "Código do pedido",
@@ -105,7 +105,10 @@ describe("public order tracking route source boundaries", () => {
       "Histórico do pedido",
       "Itens do pedido",
       "Totais",
-      "Pagamento em dinheiro",
+      "paymentCopy.eyebrow",
+      "paymentCopy.heading",
+      "paymentCopy.description",
+      "paymentCopy.action",
       "Linha do tempo pública",
       "Sem observação pública",
       'href={`/lojas/${order.establishment.slug}`}',
@@ -113,6 +116,47 @@ describe("public order tracking route source boundaries", () => {
       'href="/checkout"',
     ]) {
       expect(orderTrackingPageSource).toContain(expectedFragment);
+    }
+  });
+
+  it("renders only safe public payment instructions for pending Pix and card states", () => {
+    for (const expectedFragment of [
+      "PaymentInstructions",
+      "order.payment?.instructions ?? null",
+      "isPendingOnlinePayment(paymentMethod, paymentStatus)",
+      'paymentStatus === "PENDING"',
+      'paymentMethod === "PIX"',
+      'paymentMethod === "CARD"',
+      "Instruções para Pix",
+      "Código Pix copia e cola",
+      "Dados do QR Pix",
+      "instructions.copyPaste",
+      "instructions.qrCode",
+      "formatPublicOrderDateTime(instructions.expiresAt)",
+      "Checkout seguro do cartão",
+      "instructions.checkoutUrl",
+      'rel="noopener noreferrer"',
+      'target="_blank"',
+      "Abrir checkout seguro em nova aba",
+      "Instruções de pagamento indisponíveis",
+      "Não conseguimos exibir instruções públicas seguras",
+    ]) {
+      expect(orderTrackingPageSource).toContain(expectedFragment);
+    }
+
+    for (const forbiddenFragment of [
+      "<form",
+      "cardNumber",
+      "cardholder",
+      "cvc",
+      "cvv",
+      "expiry",
+      "expiration",
+      "token",
+      "pixQrCode",
+      "pixCopyPaste",
+    ]) {
+      expect(orderTrackingPageSource).not.toContain(forbiddenFragment);
     }
   });
 
@@ -141,14 +185,22 @@ describe("public order tracking route source boundaries", () => {
     }
 
     expect(orderTrackingPageSource).not.toMatch(/error\.message|\.stack/u);
-    expect(orderTrackingPageSource).not.toMatch(/qr|last4|gateway/u);
+    expect(orderTrackingPageSource).not.toMatch(/last4|gateway/u);
+    expect(orderTrackingPageSource).not.toMatch(
+      /cardNumber|cardholder|cvc|cvv|expiry|expiration|token/u,
+    );
   });
 
-  it("keeps checkout copy aligned with real CASH order creation", () => {
-    expect(checkoutPageSource).toContain("servidor recalcula valores");
-    expect(checkoutPageSource).toContain("criar o pedido CASH");
+  it("keeps checkout copy aligned with real CASH, PIX and CARD order creation", () => {
+    expect(checkoutPageSource).toContain("servidor recalcula");
+    expect(checkoutPageSource).toContain("valores e disponibilidade");
+    expect(checkoutPageSource).toContain("dinheiro fica");
+    expect(checkoutPageSource).toContain("PIX e cartão iniciam pagamento online");
+    expect(checkoutPageSource).toContain("sem coletar dados de cartão");
 
     for (const staleFragment of [
+      "criar o pedido CASH",
+      "PIX e cartão aparecem como indisponíveis",
       "O pedido ainda não é criado",
       "valores do carrinho local são apenas uma estimativa",
       "Nenhum pedido foi criado ainda",

@@ -6,12 +6,17 @@ const checkoutFormSource = readFileSync(
   "src/app/checkout/checkout-form.tsx",
   "utf8",
 );
+const checkoutSchemaSource = readFileSync("src/modules/orders/schemas.ts", "utf8");
 
 const forbiddenClientImports = [
   { label: "auth modules", pattern: /@\/modules\/auth/u },
   { label: "database module", pattern: /@\/server\/db/u },
   { label: "Prisma runtime", pattern: /@prisma|Prisma/u },
   { label: "Next headers", pattern: /next\/headers/u },
+  {
+    label: "payment provider/config modules",
+    pattern: /@\/modules\/payments|payments\/config|payments\/service|fake-dev-provider/u,
+  },
 ] as const;
 
 describe("checkout route source boundaries", () => {
@@ -65,8 +70,16 @@ describe("checkout route source boundaries", () => {
       'name={`items.${index}.imageUrl`}',
       'name="subtotal"',
       'name="total"',
+      'name="status"',
+      'name="paymentStatus"',
       'name="publicCode"',
+      'name="provider"',
+      'name="providerPaymentId"',
+      'name="providerStatus"',
       'name="providerPayload"',
+      'name="checkoutUrl"',
+      'name="pixQrCode"',
+      'name="pixCopyPaste"',
     ]) {
       expect(checkoutFormSource).not.toContain(forbiddenHiddenFragment);
     }
@@ -98,13 +111,49 @@ describe("checkout route source boundaries", () => {
     expect(checkoutFormSource).toContain("fieldErrors.items");
   });
 
-  it("uses the payment option contract for enabled cash and honest unavailable methods", () => {
+  it("uses the payment option contract for enabled CASH, PIX, and CARD checkout", () => {
+    expect(checkoutSchemaSource).toContain(
+      "export const CHECKOUT_CONFIRMABLE_PAYMENT_METHODS",
+    );
+    expect(checkoutSchemaSource).toContain('"CASH"');
+    expect(checkoutSchemaSource).toContain('"PIX"');
+    expect(checkoutSchemaSource).toContain('"CARD"');
+    expect(checkoutSchemaSource).toContain('method: "CASH"');
+    expect(checkoutSchemaSource).toContain('method: "PIX"');
+    expect(checkoutSchemaSource).toContain('method: "CARD"');
+    expect(checkoutSchemaSource).toContain("isConfirmable: true");
+    expect(checkoutSchemaSource).not.toContain('method: "FAKE"');
     expect(checkoutFormSource).toContain("CHECKOUT_PAYMENT_OPTIONS.map");
     expect(checkoutFormSource).toContain("option.isConfirmable");
     expect(checkoutFormSource).toContain("option.disabledReason");
     expect(checkoutFormSource).toContain("disabled={!option.isConfirmable}");
+    expect(checkoutFormSource).toContain("Dinheiro fica manual na entrega");
+    expect(checkoutFormSource).toContain("PIX e cartão iniciam um pagamento");
     expect(checkoutFormSource).toContain('return paymentOption?.method ?? "CASH"');
-    expect(checkoutFormSource).toContain("Criar pedido em dinheiro");
+    expect(checkoutFormSource).toContain('"Criar pedido"');
+    expect(checkoutFormSource).not.toContain("Criar pedido em dinheiro");
+  });
+
+  it("does not render card-data, provider, or payment-authority form fields", () => {
+    for (const forbiddenFormField of [
+      "cardNumber",
+      "card-number",
+      "cvv",
+      "cvc",
+      "expiry",
+      "expiration",
+      "cardExpiry",
+      "cardToken",
+      "paymentToken",
+      "providerPayload",
+      "providerPaymentId",
+      "providerStatus",
+      "checkoutUrl",
+      "pixQrCode",
+      "pixCopyPaste",
+    ]) {
+      expect(checkoutFormSource).not.toContain(forbiddenFormField);
+    }
   });
 
   it("clears only the matching current-store cart after a created action state", () => {

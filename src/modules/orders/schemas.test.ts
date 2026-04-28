@@ -35,38 +35,47 @@ function validCheckoutPayload() {
 }
 
 describe("checkout order schemas", () => {
-  it("normalizes a valid CASH checkout payload without authority fields", () => {
-    expect(checkoutOrderPayloadSchema.parse(validCheckoutPayload())).toEqual({
-      establishmentId: "est-a",
-      items: [
-        {
-          productId: "product-a",
-          quantity: 2,
-        },
-      ],
-      customerName: "Maria Cliente",
-      customerPhone: "11999999999",
-      deliveryStreet: "Rua das Flores",
-      deliveryNumber: "42A",
-      deliveryComplement: "apto 7",
-      deliveryNeighborhood: "Centro",
-      deliveryCity: "São Paulo",
-      deliveryState: "SP",
-      deliveryPostalCode: "01001-000",
-      deliveryReference: "portão laranja",
-      generalObservation: "tocar campainha",
-      paymentMethod: "CASH",
-    });
+  it("normalizes valid CASH, PIX, and CARD checkout payloads without authority fields", () => {
+    for (const paymentMethod of CHECKOUT_CONFIRMABLE_PAYMENT_METHODS) {
+      expect(
+        checkoutOrderPayloadSchema.parse({
+          ...validCheckoutPayload(),
+          paymentMethod,
+        }),
+      ).toEqual({
+        establishmentId: "est-a",
+        items: [
+          {
+            productId: "product-a",
+            quantity: 2,
+          },
+        ],
+        customerName: "Maria Cliente",
+        customerPhone: "11999999999",
+        deliveryStreet: "Rua das Flores",
+        deliveryNumber: "42A",
+        deliveryComplement: "apto 7",
+        deliveryNeighborhood: "Centro",
+        deliveryCity: "São Paulo",
+        deliveryState: "SP",
+        deliveryPostalCode: "01001-000",
+        deliveryReference: "portão laranja",
+        generalObservation: "tocar campainha",
+        paymentMethod,
+      });
+    }
 
     expect(
       checkoutOrderPayloadSchema.parse({
         ...validCheckoutPayload(),
+        paymentMethod: "PIX",
         items: [{ productId: " product-a ", quantity: 1 }],
         deliveryComplement: " ",
         deliveryReference: " ",
         generalObservation: " ",
       }),
     ).toMatchObject({
+      paymentMethod: "PIX",
       items: [{ productId: "product-a", quantity: 1 }],
       deliveryComplement: null,
       deliveryReference: null,
@@ -74,22 +83,26 @@ describe("checkout order schemas", () => {
     });
   });
 
-  it("keeps PIX and CARD visible as unavailable options and never exposes FAKE", () => {
+  it("keeps CASH, PIX, and CARD visible as confirmable options and never exposes FAKE", () => {
     expect(CHECKOUT_PAYMENT_METHODS).toEqual(["CASH", "PIX", "CARD"]);
-    expect(CHECKOUT_CONFIRMABLE_PAYMENT_METHODS).toEqual(["CASH"]);
+    expect(CHECKOUT_CONFIRMABLE_PAYMENT_METHODS).toEqual(["CASH", "PIX", "CARD"]);
     expect(CHECKOUT_PAYMENT_METHODS).not.toContain("FAKE");
 
     expect(CHECKOUT_PAYMENT_OPTIONS).toEqual([
-      expect.objectContaining({ method: "CASH", isConfirmable: true }),
+      expect.objectContaining({
+        method: "CASH",
+        isConfirmable: true,
+        disabledReason: null,
+      }),
       expect.objectContaining({
         method: "PIX",
-        isConfirmable: false,
-        disabledReason: expect.stringContaining("não está disponível"),
+        isConfirmable: true,
+        disabledReason: null,
       }),
       expect.objectContaining({
         method: "CARD",
-        isConfirmable: false,
-        disabledReason: expect.stringContaining("não está disponível"),
+        isConfirmable: true,
+        disabledReason: null,
       }),
     ]);
   });
@@ -172,8 +185,8 @@ describe("checkout order schemas", () => {
     }
   });
 
-  it("rejects PIX, CARD, FAKE, and unknown methods for order creation", () => {
-    for (const paymentMethod of ["PIX", "CARD", "FAKE", "BOLETO"]) {
+  it("rejects FAKE and unknown methods for order creation", () => {
+    for (const paymentMethod of ["FAKE", "BOLETO"]) {
       const result = checkoutOrderPayloadSchema.safeParse({
         ...validCheckoutPayload(),
         paymentMethod,
@@ -184,7 +197,7 @@ describe("checkout order schemas", () => {
       if (!result.success) {
         expect(
           formatCheckoutValidationErrors(result.error).fieldErrors.paymentMethod,
-        ).toContain("Pague em dinheiro para concluir este pedido.");
+        ).toContain("Escolha dinheiro, PIX ou cartão para concluir este pedido.");
       }
     }
   });
@@ -212,7 +225,13 @@ describe("checkout order schemas", () => {
       customerId: "forged-customer",
       publicCode: "PED-000001",
       provider: "forged-provider",
+      providerStatus: "APPROVED",
+      providerPaymentId: "pay_secret_123",
       providerPayload: { token: providerSecret },
+      cardNumber: "4242424242424242",
+      cardCvv: "123",
+      cardExpiry: "12/99",
+      cardToken: "tok_secret_123",
     });
 
     expect(result.success).toBe(false);
@@ -230,7 +249,13 @@ describe("checkout order schemas", () => {
         "customerId",
         "publicCode",
         "provider",
+        "providerStatus",
+        "providerPaymentId",
         "providerPayload",
+        "cardNumber",
+        "cardCvv",
+        "cardExpiry",
+        "cardToken",
         "items.0.price",
         "items.0.subtotal",
         "items.0.total",
@@ -242,6 +267,9 @@ describe("checkout order schemas", () => {
       const serializedErrors = JSON.stringify(errors);
       expect(serializedErrors).not.toContain(providerSecret);
       expect(serializedErrors).not.toContain("forged-provider");
+      expect(serializedErrors).not.toContain("pay_secret_123");
+      expect(serializedErrors).not.toContain("4242424242424242");
+      expect(serializedErrors).not.toContain("tok_secret_123");
       expect(serializedErrors).not.toContain("PED-000001");
       expect(errors.formErrors).toEqual([]);
     }

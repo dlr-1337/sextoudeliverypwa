@@ -57,15 +57,177 @@ export function getPaymentStatusLabel(status: unknown): string {
   return getLabel(PAYMENT_STATUS_LABELS, status, "Status do pagamento indisponível");
 }
 
+export type PublicPaymentSummaryCopy = {
+  eyebrow: string;
+  heading: string;
+  description: string;
+  action: string;
+};
+
+const MANUAL_CASH_PAYMENT_DESCRIPTION =
+  "Pagamento em dinheiro na entrega. Se precisar de troco, combine com a loja no atendimento.";
+
+const PUBLIC_PAYMENT_FALLBACK_COPY = {
+  eyebrow: "Pagamento",
+  heading: "Pagamento indisponível",
+  description: "Pagamento indisponível para acompanhamento público.",
+  action: "Acompanhe o pedido por este endereço ou fale com a loja pelo atendimento.",
+} as const satisfies PublicPaymentSummaryCopy;
+
+const CASH_PENDING_COPY = {
+  eyebrow: "Pagamento manual",
+  heading: "Pagamento em dinheiro",
+  description: MANUAL_CASH_PAYMENT_DESCRIPTION,
+  action: "Tenha o valor combinado disponível no recebimento do pedido.",
+} as const satisfies PublicPaymentSummaryCopy;
+
+const PUBLIC_PAYMENT_SUMMARY_COPY = {
+  CASH: {
+    PENDING: CASH_PENDING_COPY,
+    MANUAL_CASH_ON_DELIVERY: CASH_PENDING_COPY,
+    AUTHORIZED: {
+      eyebrow: "Pagamento manual",
+      heading: "Pagamento em dinheiro combinado",
+      description:
+        "A loja está acompanhando este pedido antes de registrar o pagamento em dinheiro.",
+      action: "Combine os próximos passos diretamente com a loja pelo atendimento.",
+    },
+    PAID: {
+      eyebrow: "Pagamento manual",
+      heading: "Pagamento em dinheiro registrado",
+      description: "A loja registrou o pagamento em dinheiro deste pedido.",
+      action: "Continue acompanhando as atualizações públicas do pedido.",
+    },
+    FAILED: {
+      eyebrow: "Pagamento manual",
+      heading: "Pagamento em dinheiro não registrado",
+      description:
+        "A loja não conseguiu registrar o pagamento em dinheiro para este pedido.",
+      action: "Fale com a loja pelo atendimento para combinar uma alternativa.",
+    },
+    REFUNDED: {
+      eyebrow: "Pagamento manual",
+      heading: "Pagamento em dinheiro ajustado",
+      description: "A loja registrou um ajuste financeiro para este pedido.",
+      action: "Fale com a loja pelo atendimento se precisar de detalhes.",
+    },
+    CANCELED: {
+      eyebrow: "Pagamento manual",
+      heading: "Pagamento em dinheiro cancelado",
+      description:
+        "O pagamento em dinheiro não precisa ser realizado porque o pedido foi cancelado.",
+      action: "Nenhuma ação de pagamento é necessária neste endereço.",
+    },
+  },
+  PIX: {
+    PENDING: {
+      eyebrow: "Pagamento via Pix",
+      heading: "Pix aguardando pagamento",
+      description:
+        "Use as instruções de Pix exibidas nesta página para pagar com segurança.",
+      action: "Depois de pagar, acompanhe a confirmação neste mesmo endereço.",
+    },
+    MANUAL_CASH_ON_DELIVERY: PUBLIC_PAYMENT_FALLBACK_COPY,
+    AUTHORIZED: {
+      eyebrow: "Pagamento via Pix",
+      heading: "Pix em confirmação",
+      description:
+        "Recebemos a sinalização do pagamento e a confirmação final aparecerá neste acompanhamento.",
+      action: "Aguarde a atualização pública antes de refazer o pagamento.",
+    },
+    PAID: {
+      eyebrow: "Pagamento via Pix",
+      heading: "Pix confirmado",
+      description: "O pagamento via Pix foi confirmado para este pedido.",
+      action: "Continue acompanhando o preparo e a entrega por este endereço.",
+    },
+    FAILED: {
+      eyebrow: "Pagamento via Pix",
+      heading: "Pix não aprovado",
+      description:
+        "Não foi possível confirmar o pagamento via Pix para este pedido.",
+      action: "Fale com a loja pelo atendimento antes de tentar pagar novamente.",
+    },
+    REFUNDED: {
+      eyebrow: "Pagamento via Pix",
+      heading: "Pix estornado",
+      description: "A loja registrou a devolução do pagamento via Pix deste pedido.",
+      action: "Fale com a loja pelo atendimento se precisar acompanhar a devolução.",
+    },
+    CANCELED: {
+      eyebrow: "Pagamento via Pix",
+      heading: "Pix cancelado",
+      description: "O pagamento via Pix deste pedido foi cancelado.",
+      action: "Não use instruções antigas de pagamento para este pedido.",
+    },
+  },
+  CARD: {
+    PENDING: {
+      eyebrow: "Pagamento por cartão",
+      heading: "Cartão aguardando pagamento",
+      description:
+        "Finalize o pagamento pelo link seguro exibido nesta página quando ele estiver disponível.",
+      action: "Após concluir, volte para acompanhar a atualização do pedido.",
+    },
+    MANUAL_CASH_ON_DELIVERY: PUBLIC_PAYMENT_FALLBACK_COPY,
+    AUTHORIZED: {
+      eyebrow: "Pagamento por cartão",
+      heading: "Cartão autorizado",
+      description:
+        "A autorização do cartão foi recebida e a confirmação final aparecerá neste acompanhamento.",
+      action: "Aguarde a atualização pública antes de iniciar outro pagamento.",
+    },
+    PAID: {
+      eyebrow: "Pagamento por cartão",
+      heading: "Cartão confirmado",
+      description: "O pagamento por cartão foi confirmado para este pedido.",
+      action: "Continue acompanhando o preparo e a entrega por este endereço.",
+    },
+    FAILED: {
+      eyebrow: "Pagamento por cartão",
+      heading: "Cartão não aprovado",
+      description:
+        "Não foi possível confirmar o pagamento por cartão para este pedido.",
+      action: "Fale com a loja pelo atendimento para escolher uma alternativa segura.",
+    },
+    REFUNDED: {
+      eyebrow: "Pagamento por cartão",
+      heading: "Cartão estornado",
+      description: "A loja registrou a devolução do pagamento por cartão deste pedido.",
+      action: "Fale com a loja pelo atendimento se precisar acompanhar a devolução.",
+    },
+    CANCELED: {
+      eyebrow: "Pagamento por cartão",
+      heading: "Cartão cancelado",
+      description: "O pagamento por cartão deste pedido foi cancelado.",
+      action: "Não use links antigos de pagamento para este pedido.",
+    },
+  },
+} as const satisfies Record<
+  Extract<PaymentMethodValue, "CASH" | "PIX" | "CARD">,
+  Record<PaymentStatusValue, PublicPaymentSummaryCopy>
+>;
+
+export function getPublicPaymentSummaryCopy(
+  method: unknown,
+  status: unknown,
+): PublicPaymentSummaryCopy {
+  if (!isPublicPaymentMethod(method) || !isPaymentStatusValue(status)) {
+    return PUBLIC_PAYMENT_FALLBACK_COPY;
+  }
+
+  return PUBLIC_PAYMENT_SUMMARY_COPY[method][status];
+}
+
 export function getManualCashPaymentDescription(
   method: unknown,
   status: unknown,
 ): string {
   if (method === "CASH" && status === "MANUAL_CASH_ON_DELIVERY") {
-    return "Pagamento em dinheiro na entrega. Se precisar de troco, combine com a loja no atendimento.";
+    return MANUAL_CASH_PAYMENT_DESCRIPTION;
   }
 
-  return "Pagamento indisponível para acompanhamento público.";
+  return PUBLIC_PAYMENT_FALLBACK_COPY.description;
 }
 
 export function formatPublicOrderMoney(value: unknown): string {
@@ -86,6 +248,16 @@ export function formatPublicOrderDateTime(value: unknown): string {
   }
 
   return DATE_TIME_FORMATTER.format(date);
+}
+
+function isPublicPaymentMethod(
+  method: unknown,
+): method is Extract<PaymentMethodValue, "CASH" | "PIX" | "CARD"> {
+  return method === "CASH" || method === "PIX" || method === "CARD";
+}
+
+function isPaymentStatusValue(status: unknown): status is PaymentStatusValue {
+  return typeof status === "string" && Object.hasOwn(PAYMENT_STATUS_LABELS, status);
 }
 
 function getLabel<TLabels extends Record<string, string>>(

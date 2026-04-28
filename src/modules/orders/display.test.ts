@@ -7,12 +7,26 @@ import {
   getOrderStatusLabel,
   getPaymentMethodLabel,
   getPaymentStatusLabel,
+  getPublicPaymentSummaryCopy,
 } from "./display";
 import type {
   OrderStatusValue,
   PaymentMethodValue,
   PaymentStatusValue,
 } from "./service-core";
+
+const PUBLIC_PAYMENT_COPY_FIELDS = [
+  "eyebrow",
+  "heading",
+  "description",
+  "action",
+] as const;
+
+function publicPaymentCopyText(method: unknown, status: unknown): string {
+  const copy = getPublicPaymentSummaryCopy(method, status);
+
+  return PUBLIC_PAYMENT_COPY_FIELDS.map((field) => copy[field]).join(" ");
+}
 
 describe("public order display helpers", () => {
   it("maps every order status to Portuguese user-facing labels", () => {
@@ -62,19 +76,94 @@ describe("public order display helpers", () => {
     }
   });
 
-  it("describes manual cash-on-delivery without mentioning providers, Pix or card data", () => {
+  it("returns accessible manual cash copy without changing legacy wording", () => {
+    const copy = getPublicPaymentSummaryCopy("CASH", "MANUAL_CASH_ON_DELIVERY");
     const description = getManualCashPaymentDescription(
       "CASH",
       "MANUAL_CASH_ON_DELIVERY",
     );
 
-    expect(description).toBe(
-      "Pagamento em dinheiro na entrega. Se precisar de troco, combine com a loja no atendimento.",
-    );
+    expect(copy).toMatchObject({
+      eyebrow: "Pagamento manual",
+      heading: "Pagamento em dinheiro",
+      description:
+        "Pagamento em dinheiro na entrega. Se precisar de troco, combine com a loja no atendimento.",
+    });
+    expect(copy.action).toContain("valor combinado");
+    expect(description).toBe(copy.description);
     expect(description).not.toMatch(/pix|cart[aã]o|gateway|provider|qr|last4/i);
   });
 
-  it("uses safe fallback copy for unknown enum values instead of leaking raw values", () => {
+  it("returns distinct user-facing Pix copy for pending and terminal states", () => {
+    expect(getPublicPaymentSummaryCopy("PIX", "PENDING")).toMatchObject({
+      eyebrow: "Pagamento via Pix",
+      heading: "Pix aguardando pagamento",
+      description:
+        "Use as instruções de Pix exibidas nesta página para pagar com segurança.",
+    });
+    expect(getPublicPaymentSummaryCopy("PIX", "AUTHORIZED").heading).toBe(
+      "Pix em confirmação",
+    );
+    expect(getPublicPaymentSummaryCopy("PIX", "PAID").heading).toBe(
+      "Pix confirmado",
+    );
+    expect(getPublicPaymentSummaryCopy("PIX", "FAILED").heading).toBe(
+      "Pix não aprovado",
+    );
+    expect(getPublicPaymentSummaryCopy("PIX", "CANCELED").heading).toBe(
+      "Pix cancelado",
+    );
+
+    const pixHeadings = [
+      "PENDING",
+      "AUTHORIZED",
+      "PAID",
+      "FAILED",
+      "CANCELED",
+    ].map((status) => getPublicPaymentSummaryCopy("PIX", status).heading);
+
+    expect(new Set(pixHeadings).size).toBe(pixHeadings.length);
+  });
+
+  it("returns distinct user-facing card copy for pending and terminal states", () => {
+    expect(getPublicPaymentSummaryCopy("CARD", "PENDING")).toMatchObject({
+      eyebrow: "Pagamento por cartão",
+      heading: "Cartão aguardando pagamento",
+      description:
+        "Finalize o pagamento pelo link seguro exibido nesta página quando ele estiver disponível.",
+    });
+    expect(getPublicPaymentSummaryCopy("CARD", "AUTHORIZED").heading).toBe(
+      "Cartão autorizado",
+    );
+    expect(getPublicPaymentSummaryCopy("CARD", "PAID").heading).toBe(
+      "Cartão confirmado",
+    );
+    expect(getPublicPaymentSummaryCopy("CARD", "FAILED").heading).toBe(
+      "Cartão não aprovado",
+    );
+    expect(getPublicPaymentSummaryCopy("CARD", "CANCELED").heading).toBe(
+      "Cartão cancelado",
+    );
+
+    const cardHeadings = [
+      "PENDING",
+      "AUTHORIZED",
+      "PAID",
+      "FAILED",
+      "CANCELED",
+    ].map((status) => getPublicPaymentSummaryCopy("CARD", status).heading);
+
+    expect(new Set(cardHeadings).size).toBe(cardHeadings.length);
+  });
+
+  it("uses safe fallback copy for unknown or mismatched payment values", () => {
+    const expectedPaymentFallback = {
+      eyebrow: "Pagamento",
+      heading: "Pagamento indisponível",
+      description: "Pagamento indisponível para acompanhamento público.",
+      action: "Acompanhe o pedido por este endereço ou fale com a loja pelo atendimento.",
+    };
+
     expect(getOrderStatusLabel("DATABASE_URL" as OrderStatusValue)).toBe(
       "Status do pedido indisponível",
     );
@@ -83,7 +172,80 @@ describe("public order display helpers", () => {
     );
     expect(
       getManualCashPaymentDescription("PIX" as PaymentMethodValue, "PAID"),
-    ).toBe("Pagamento indisponível para acompanhamento público.");
+    ).toBe(expectedPaymentFallback.description);
+    expect(getPublicPaymentSummaryCopy("FAKE", "PENDING")).toEqual(
+      expectedPaymentFallback,
+    );
+    expect(getPublicPaymentSummaryCopy("PIX", "PROVIDER_FAILED")).toEqual(
+      expectedPaymentFallback,
+    );
+    expect(
+      getPublicPaymentSummaryCopy("CARD", "MANUAL_CASH_ON_DELIVERY"),
+    ).toEqual(expectedPaymentFallback);
+    expect(publicPaymentCopyText("DATABASE_URL", "PROVIDER_FAILED")).not.toMatch(
+      /DATABASE_URL|PROVIDER_FAILED/u,
+    );
+  });
+
+  it("keeps generated public payment copy free of unsafe provider, debug and card-data fragments", () => {
+    const samples: Array<[unknown, unknown]> = [
+      ["CASH", "MANUAL_CASH_ON_DELIVERY"],
+      ["CASH", "PENDING"],
+      ["CASH", "AUTHORIZED"],
+      ["CASH", "PAID"],
+      ["CASH", "FAILED"],
+      ["CASH", "REFUNDED"],
+      ["CASH", "CANCELED"],
+      ["PIX", "PENDING"],
+      ["PIX", "AUTHORIZED"],
+      ["PIX", "PAID"],
+      ["PIX", "FAILED"],
+      ["PIX", "REFUNDED"],
+      ["PIX", "CANCELED"],
+      ["CARD", "PENDING"],
+      ["CARD", "AUTHORIZED"],
+      ["CARD", "PAID"],
+      ["CARD", "FAILED"],
+      ["CARD", "REFUNDED"],
+      ["CARD", "CANCELED"],
+      ["providerPayload", "DATABASE_URL"],
+      ["CARD", "cardLast4"],
+    ];
+    const unsafeFragments = [
+      /provider/u,
+      /gateway/u,
+      /payload/u,
+      /debug/u,
+      /secret/u,
+      /token/u,
+      /cvv/u,
+      /last4/u,
+      /cardBrand/u,
+      /cardLast4/u,
+      /providerPaymentId/u,
+      /providerStatus/u,
+      /DATABASE_URL/u,
+      /SQL/u,
+      /stack/u,
+      /internal id/u,
+      /id interno/u,
+      /raw/u,
+      /enum/u,
+      /n[uú]mero (?:completo )?do cart[aã]o/u,
+      /validade do cart[aã]o/u,
+      /expiry/u,
+      /expiration/u,
+      /PENDING|AUTHORIZED|PAID|FAILED|REFUNDED|CANCELED/u,
+      /MANUAL_CASH_ON_DELIVERY|CASH|PIX|CARD/u,
+    ];
+
+    for (const [method, status] of samples) {
+      const generatedCopy = publicPaymentCopyText(method, status);
+
+      for (const unsafeFragment of unsafeFragments) {
+        expect(generatedCopy).not.toMatch(unsafeFragment);
+      }
+    }
   });
 
   it("formats valid public money values and hides malformed persisted values", () => {

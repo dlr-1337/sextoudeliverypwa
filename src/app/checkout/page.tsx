@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Checkout",
-  description: "Revise o carrinho e valide os dados de entrega no Sextou Delivery.",
+  description:
+    "Revise o carrinho e crie pedidos com dinheiro, PIX ou cartão fake/dev no Sextou Delivery.",
 };
 
 export default async function CheckoutPage() {
@@ -34,14 +35,16 @@ export default async function CheckoutPage() {
               Revise seu carrinho antes de enviar.
             </h1>
             <p className="mt-4 text-sm leading-7 text-slate-700">
-              Esta etapa valida sessão CUSTOMER, dados de contato, entrega e
-              pagamento em dinheiro. Ao enviar, o servidor recalcula valores e
-              disponibilidade antes de criar o pedido CASH com código público.
+              Esta etapa valida sessão CUSTOMER, dados de contato, entrega e a
+              forma de pagamento escolhida. Ao enviar, o servidor recalcula
+              valores e disponibilidade antes de criar o pedido; dinheiro fica
+              manual na entrega, enquanto PIX e cartão iniciam pagamento online
+              fake/dev sem coletar dados de cartão nesta página.
             </p>
             <div className="mt-6 grid gap-3 rounded-3xl border border-orange-100 bg-orange-50/75 p-4 text-sm font-bold text-orange-950">
               <span>Cliente autenticado: {auth.user.name}</span>
-              <span>Pagamento confirmável agora: dinheiro</span>
-              <span>PIX e cartão aparecem como indisponíveis com explicação.</span>
+              <span>Dinheiro: pagamento manual na entrega.</span>
+              <span>PIX e cartão: iniciação online fake/dev pendente.</span>
             </div>
           </article>
 

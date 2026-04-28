@@ -43,6 +43,7 @@ export type PaymentMinAggregateOutputType = {
   provider: string | null
   providerPaymentId: string | null
   providerStatus: string | null
+  checkoutUrl: string | null
   pixQrCode: string | null
   pixCopyPaste: string | null
   pixExpiresAt: Date | null
@@ -63,6 +64,7 @@ export type PaymentMaxAggregateOutputType = {
   provider: string | null
   providerPaymentId: string | null
   providerStatus: string | null
+  checkoutUrl: string | null
   pixQrCode: string | null
   pixCopyPaste: string | null
   pixExpiresAt: Date | null
@@ -84,6 +86,7 @@ export type PaymentCountAggregateOutputType = {
   providerPaymentId: number
   providerStatus: number
   providerPayload: number
+  checkoutUrl: number
   pixQrCode: number
   pixCopyPaste: number
   pixExpiresAt: number
@@ -114,6 +117,7 @@ export type PaymentMinAggregateInputType = {
   provider?: true
   providerPaymentId?: true
   providerStatus?: true
+  checkoutUrl?: true
   pixQrCode?: true
   pixCopyPaste?: true
   pixExpiresAt?: true
@@ -134,6 +138,7 @@ export type PaymentMaxAggregateInputType = {
   provider?: true
   providerPaymentId?: true
   providerStatus?: true
+  checkoutUrl?: true
   pixQrCode?: true
   pixCopyPaste?: true
   pixExpiresAt?: true
@@ -155,6 +160,7 @@ export type PaymentCountAggregateInputType = {
   providerPaymentId?: true
   providerStatus?: true
   providerPayload?: true
+  checkoutUrl?: true
   pixQrCode?: true
   pixCopyPaste?: true
   pixExpiresAt?: true
@@ -263,6 +269,7 @@ export type PaymentGroupByOutputType = {
   providerPaymentId: string | null
   providerStatus: string | null
   providerPayload: runtime.JsonValue | null
+  checkoutUrl: string | null
   pixQrCode: string | null
   pixCopyPaste: string | null
   pixExpiresAt: Date | null
@@ -307,6 +314,7 @@ export type PaymentWhereInput = {
   providerPaymentId?: Prisma.StringNullableFilter<"Payment"> | string | null
   providerStatus?: Prisma.StringNullableFilter<"Payment"> | string | null
   providerPayload?: Prisma.JsonNullableFilter<"Payment">
+  checkoutUrl?: Prisma.StringNullableFilter<"Payment"> | string | null
   pixQrCode?: Prisma.StringNullableFilter<"Payment"> | string | null
   pixCopyPaste?: Prisma.StringNullableFilter<"Payment"> | string | null
   pixExpiresAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
@@ -329,6 +337,7 @@ export type PaymentOrderByWithRelationInput = {
   providerPaymentId?: Prisma.SortOrderInput | Prisma.SortOrder
   providerStatus?: Prisma.SortOrderInput | Prisma.SortOrder
   providerPayload?: Prisma.SortOrderInput | Prisma.SortOrder
+  checkoutUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   pixQrCode?: Prisma.SortOrderInput | Prisma.SortOrder
   pixCopyPaste?: Prisma.SortOrderInput | Prisma.SortOrder
   pixExpiresAt?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -354,6 +363,7 @@ export type PaymentWhereUniqueInput = Prisma.AtLeast<{
   provider?: Prisma.StringNullableFilter<"Payment"> | string | null
   providerStatus?: Prisma.StringNullableFilter<"Payment"> | string | null
   providerPayload?: Prisma.JsonNullableFilter<"Payment">
+  checkoutUrl?: Prisma.StringNullableFilter<"Payment"> | string | null
   pixQrCode?: Prisma.StringNullableFilter<"Payment"> | string | null
   pixCopyPaste?: Prisma.StringNullableFilter<"Payment"> | string | null
   pixExpiresAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
@@ -376,6 +386,7 @@ export type PaymentOrderByWithAggregationInput = {
   providerPaymentId?: Prisma.SortOrderInput | Prisma.SortOrder
   providerStatus?: Prisma.SortOrderInput | Prisma.SortOrder
   providerPayload?: Prisma.SortOrderInput | Prisma.SortOrder
+  checkoutUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   pixQrCode?: Prisma.SortOrderInput | Prisma.SortOrder
   pixCopyPaste?: Prisma.SortOrderInput | Prisma.SortOrder
   pixExpiresAt?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -405,6 +416,7 @@ export type PaymentScalarWhereWithAggregatesInput = {
   providerPaymentId?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
   providerStatus?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
   providerPayload?: Prisma.JsonNullableWithAggregatesFilter<"Payment">
+  checkoutUrl?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
   pixQrCode?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
   pixCopyPaste?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
   pixExpiresAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Payment"> | Date | string | null
@@ -425,6 +437,7 @@ export type PaymentCreateInput = {
   providerPaymentId?: string | null
   providerStatus?: string | null
   providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  checkoutUrl?: string | null
   pixQrCode?: string | null
   pixCopyPaste?: string | null
   pixExpiresAt?: Date | string | null
@@ -447,6 +460,7 @@ export type PaymentUncheckedCreateInput = {
   providerPaymentId?: string | null
   providerStatus?: string | null
   providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  checkoutUrl?: string | null
   pixQrCode?: string | null
   pixCopyPaste?: string | null
   pixExpiresAt?: Date | string | null
@@ -467,6 +481,7 @@ export type PaymentUpdateInput = {
   providerPaymentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  checkoutUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixQrCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixCopyPaste?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -489,6 +504,7 @@ export type PaymentUncheckedUpdateInput = {
   providerPaymentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  checkoutUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixQrCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixCopyPaste?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -510,6 +526,7 @@ export type PaymentCreateManyInput = {
   providerPaymentId?: string | null
   providerStatus?: string | null
   providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  checkoutUrl?: string | null
   pixQrCode?: string | null
   pixCopyPaste?: string | null
   pixExpiresAt?: Date | string | null
@@ -530,6 +547,7 @@ export type PaymentUpdateManyMutationInput = {
   providerPaymentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  checkoutUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixQrCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixCopyPaste?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -551,6 +569,7 @@ export type PaymentUncheckedUpdateManyInput = {
   providerPaymentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  checkoutUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixQrCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixCopyPaste?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -577,6 +596,7 @@ export type PaymentCountOrderByAggregateInput = {
   providerPaymentId?: Prisma.SortOrder
   providerStatus?: Prisma.SortOrder
   providerPayload?: Prisma.SortOrder
+  checkoutUrl?: Prisma.SortOrder
   pixQrCode?: Prisma.SortOrder
   pixCopyPaste?: Prisma.SortOrder
   pixExpiresAt?: Prisma.SortOrder
@@ -601,6 +621,7 @@ export type PaymentMaxOrderByAggregateInput = {
   provider?: Prisma.SortOrder
   providerPaymentId?: Prisma.SortOrder
   providerStatus?: Prisma.SortOrder
+  checkoutUrl?: Prisma.SortOrder
   pixQrCode?: Prisma.SortOrder
   pixCopyPaste?: Prisma.SortOrder
   pixExpiresAt?: Prisma.SortOrder
@@ -621,6 +642,7 @@ export type PaymentMinOrderByAggregateInput = {
   provider?: Prisma.SortOrder
   providerPaymentId?: Prisma.SortOrder
   providerStatus?: Prisma.SortOrder
+  checkoutUrl?: Prisma.SortOrder
   pixQrCode?: Prisma.SortOrder
   pixCopyPaste?: Prisma.SortOrder
   pixExpiresAt?: Prisma.SortOrder
@@ -677,6 +699,7 @@ export type PaymentCreateWithoutOrderInput = {
   providerPaymentId?: string | null
   providerStatus?: string | null
   providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  checkoutUrl?: string | null
   pixQrCode?: string | null
   pixCopyPaste?: string | null
   pixExpiresAt?: Date | string | null
@@ -697,6 +720,7 @@ export type PaymentUncheckedCreateWithoutOrderInput = {
   providerPaymentId?: string | null
   providerStatus?: string | null
   providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  checkoutUrl?: string | null
   pixQrCode?: string | null
   pixCopyPaste?: string | null
   pixExpiresAt?: Date | string | null
@@ -733,6 +757,7 @@ export type PaymentUpdateWithoutOrderInput = {
   providerPaymentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  checkoutUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixQrCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixCopyPaste?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -753,6 +778,7 @@ export type PaymentUncheckedUpdateWithoutOrderInput = {
   providerPaymentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   providerPayload?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  checkoutUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixQrCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixCopyPaste?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -776,6 +802,7 @@ export type PaymentSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   providerPaymentId?: boolean
   providerStatus?: boolean
   providerPayload?: boolean
+  checkoutUrl?: boolean
   pixQrCode?: boolean
   pixCopyPaste?: boolean
   pixExpiresAt?: boolean
@@ -798,6 +825,7 @@ export type PaymentSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   providerPaymentId?: boolean
   providerStatus?: boolean
   providerPayload?: boolean
+  checkoutUrl?: boolean
   pixQrCode?: boolean
   pixCopyPaste?: boolean
   pixExpiresAt?: boolean
@@ -820,6 +848,7 @@ export type PaymentSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   providerPaymentId?: boolean
   providerStatus?: boolean
   providerPayload?: boolean
+  checkoutUrl?: boolean
   pixQrCode?: boolean
   pixCopyPaste?: boolean
   pixExpiresAt?: boolean
@@ -842,6 +871,7 @@ export type PaymentSelectScalar = {
   providerPaymentId?: boolean
   providerStatus?: boolean
   providerPayload?: boolean
+  checkoutUrl?: boolean
   pixQrCode?: boolean
   pixCopyPaste?: boolean
   pixExpiresAt?: boolean
@@ -853,7 +883,7 @@ export type PaymentSelectScalar = {
   updatedAt?: boolean
 }
 
-export type PaymentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "orderId" | "method" | "status" | "amount" | "provider" | "providerPaymentId" | "providerStatus" | "providerPayload" | "pixQrCode" | "pixCopyPaste" | "pixExpiresAt" | "cardBrand" | "cardLast4" | "paidAt" | "failedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["payment"]>
+export type PaymentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "orderId" | "method" | "status" | "amount" | "provider" | "providerPaymentId" | "providerStatus" | "providerPayload" | "checkoutUrl" | "pixQrCode" | "pixCopyPaste" | "pixExpiresAt" | "cardBrand" | "cardLast4" | "paidAt" | "failedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["payment"]>
 export type PaymentInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   order?: boolean | Prisma.OrderDefaultArgs<ExtArgs>
 }
@@ -879,6 +909,7 @@ export type $PaymentPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     providerPaymentId: string | null
     providerStatus: string | null
     providerPayload: runtime.JsonValue | null
+    checkoutUrl: string | null
     pixQrCode: string | null
     pixCopyPaste: string | null
     pixExpiresAt: Date | null
@@ -1321,6 +1352,7 @@ export interface PaymentFieldRefs {
   readonly providerPaymentId: Prisma.FieldRef<"Payment", 'String'>
   readonly providerStatus: Prisma.FieldRef<"Payment", 'String'>
   readonly providerPayload: Prisma.FieldRef<"Payment", 'Json'>
+  readonly checkoutUrl: Prisma.FieldRef<"Payment", 'String'>
   readonly pixQrCode: Prisma.FieldRef<"Payment", 'String'>
   readonly pixCopyPaste: Prisma.FieldRef<"Payment", 'String'>
   readonly pixExpiresAt: Prisma.FieldRef<"Payment", 'DateTime'>

@@ -6,15 +6,18 @@ import { FeedbackState } from "@/components/ui/feedback-state";
 import {
   formatPublicOrderDateTime,
   formatPublicOrderMoney,
-  getManualCashPaymentDescription,
   getOrderStatusLabel,
   getPaymentMethodLabel,
   getPaymentStatusLabel,
+  getPublicPaymentSummaryCopy,
 } from "@/modules/orders/display";
 import { orderService } from "@/modules/orders/service";
 import type {
+  PaymentMethodValue,
+  PaymentStatusValue,
   PublicOrderDto,
   PublicOrderItemDto,
+  PublicOrderPaymentInstructionsDto,
   PublicOrderStatusHistoryDto,
 } from "@/modules/orders/service-core";
 
@@ -127,6 +130,7 @@ function PaymentSummary({ order }: { order: PublicOrderDto }) {
   const paymentMethod = order.payment?.method ?? order.paymentMethod;
   const paymentStatus = order.payment?.status ?? order.paymentStatus;
   const paymentAmount = order.payment?.amount ?? order.total;
+  const paymentCopy = getPublicPaymentSummaryCopy(paymentMethod, paymentStatus);
 
   return (
     <section
@@ -134,17 +138,23 @@ function PaymentSummary({ order }: { order: PublicOrderDto }) {
       className="rounded-[2rem] border border-amber-200/75 bg-white/90 p-6 shadow-xl shadow-orange-950/10 backdrop-blur sm:p-7"
     >
       <p className="text-xs font-black uppercase tracking-[0.28em] text-amber-700">
-        Pagamento manual
+        {paymentCopy.eyebrow}
       </p>
       <h2
         className="mt-3 text-2xl font-black tracking-[-0.04em] text-orange-950"
         id="public-order-payment-heading"
       >
-        Pagamento em dinheiro
+        {paymentCopy.heading}
       </h2>
-      <p className="mt-3 text-sm leading-7 text-slate-700">
-        {getManualCashPaymentDescription(paymentMethod, paymentStatus)}
-      </p>
+      <div className="mt-3 space-y-2 text-sm leading-7 text-slate-700">
+        <p>{paymentCopy.description}</p>
+        <p className="font-semibold text-slate-600">{paymentCopy.action}</p>
+      </div>
+      <PaymentInstructions
+        instructions={order.payment?.instructions ?? null}
+        paymentMethod={paymentMethod}
+        paymentStatus={paymentStatus}
+      />
       <dl className="mt-5 grid gap-3 text-sm font-bold text-slate-700">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
           <dt>Forma de pagamento</dt>
@@ -160,6 +170,125 @@ function PaymentSummary({ order }: { order: PublicOrderDto }) {
         </div>
       </dl>
     </section>
+  );
+}
+
+type PublicPixInstructions = Extract<
+  PublicOrderPaymentInstructionsDto,
+  { method: "PIX" }
+>;
+
+type PublicCardInstructions = Extract<
+  PublicOrderPaymentInstructionsDto,
+  { method: "CARD" }
+>;
+
+function PaymentInstructions({
+  instructions,
+  paymentMethod,
+  paymentStatus,
+}: {
+  instructions: PublicOrderPaymentInstructionsDto | null;
+  paymentMethod: PaymentMethodValue;
+  paymentStatus: PaymentStatusValue;
+}) {
+  if (!isPendingOnlinePayment(paymentMethod, paymentStatus)) {
+    return null;
+  }
+
+  if (paymentMethod === "PIX" && instructions?.method === "PIX") {
+    return <PixPaymentInstructions instructions={instructions} />;
+  }
+
+  if (paymentMethod === "CARD" && instructions?.method === "CARD") {
+    return <CardPaymentInstructions instructions={instructions} />;
+  }
+
+  return <PaymentInstructionsUnavailable />;
+}
+
+function PixPaymentInstructions({
+  instructions,
+}: {
+  instructions: PublicPixInstructions;
+}) {
+  return (
+    <div
+      aria-label="Instruções para pagamento via Pix"
+      className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50/80 p-5 text-sm text-emerald-950"
+    >
+      <h3 className="text-base font-black">Instruções para Pix</h3>
+      <dl className="mt-4 grid gap-3">
+        <div className="rounded-2xl border border-emerald-100 bg-white/80 p-4">
+          <dt className="font-black">Código Pix copia e cola</dt>
+          <dd className="mt-2 break-all rounded-2xl bg-emerald-950/95 p-3 font-mono text-xs leading-6 text-white">
+            {instructions.copyPaste}
+          </dd>
+        </div>
+        <div className="rounded-2xl border border-emerald-100 bg-white/80 p-4">
+          <dt className="font-black">Dados do QR Pix</dt>
+          <dd className="mt-2 break-all rounded-2xl bg-white p-3 font-mono text-xs leading-6 text-emerald-950 ring-1 ring-emerald-100">
+            {instructions.qrCode}
+          </dd>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-100 bg-white/80 p-4 font-bold">
+          <dt>Validade das instruções</dt>
+          <dd>{formatPublicOrderDateTime(instructions.expiresAt)}</dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function CardPaymentInstructions({
+  instructions,
+}: {
+  instructions: PublicCardInstructions;
+}) {
+  return (
+    <div
+      aria-label="Instruções para pagamento por cartão"
+      className="mt-5 rounded-3xl border border-sky-200 bg-sky-50/80 p-5 text-sm text-sky-950"
+    >
+      <h3 className="text-base font-black">Checkout seguro do cartão</h3>
+      <p className="mt-2 leading-7 text-sky-900">
+        Use o link hospedado para finalizar o pagamento. Esta página não coleta
+        dados de cartão.
+      </p>
+      <a
+        className="mt-4 inline-flex rounded-full bg-sky-700 px-5 py-3 text-sm font-black text-white shadow-lg shadow-sky-700/20 transition hover:bg-sky-800 focus:outline-none focus:ring-4 focus:ring-sky-200"
+        href={instructions.checkoutUrl}
+        rel="noopener noreferrer"
+        target="_blank"
+      >
+        Abrir checkout seguro em nova aba
+      </a>
+    </div>
+  );
+}
+
+function PaymentInstructionsUnavailable() {
+  return (
+    <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50/90 p-5 text-sm text-slate-700">
+      <h3 className="font-black text-slate-900">
+        Instruções de pagamento indisponíveis
+      </h3>
+      <p className="mt-2 leading-7">
+        Não conseguimos exibir instruções públicas seguras para este pagamento
+        agora. Acompanhe o status neste endereço ou fale com a loja pelo
+        atendimento.
+      </p>
+    </div>
+  );
+}
+
+function isPendingOnlinePayment(
+  paymentMethod: PaymentMethodValue,
+  paymentStatus: PaymentStatusValue,
+) {
+  return (
+    paymentStatus === "PENDING" &&
+    (paymentMethod === "PIX" || paymentMethod === "CARD")
   );
 }
 

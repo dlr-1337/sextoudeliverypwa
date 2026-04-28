@@ -68,7 +68,7 @@ const CART_CREATED_CLEAR_FAILURE_MESSAGE =
 const CART_CREATED_NAVIGATION_FAILURE_MESSAGE =
   "Pedido criado, mas o redirecionamento automático falhou. Use o link de confirmação abaixo.";
 const ESTIMATE_COPY =
-  "Valores e disponibilidade são estimativas do carrinho salvo; o servidor recalculará tudo antes de criar o pedido.";
+  "Valores e disponibilidade são estimativas do carrinho salvo; o servidor recalculará tudo antes de criar o pedido e iniciar pagamentos online quando selecionados.";
 
 export function CheckoutForm({ customerDefaults }: CheckoutFormProps) {
   const router = useRouter();
@@ -240,12 +240,12 @@ export function CheckoutForm({ customerDefaults }: CheckoutFormProps) {
           Checkout CUSTOMER
         </p>
         <h2 className="text-3xl font-black tracking-[-0.04em] text-orange-950 sm:text-4xl">
-          Dados para criar a entrega
+          Dados para criar o pedido
         </h2>
         <p className="text-sm leading-6 text-slate-600">
           Enviaremos somente identificadores de loja/produtos, quantidades e os
-          campos abaixo. Preços, imagens e nomes do carrinho não têm autoridade
-          no servidor.
+          campos abaixo. Preços, imagens, nomes do carrinho e estado de
+          pagamento não têm autoridade no servidor.
         </p>
       </div>
 
@@ -694,6 +694,11 @@ function PaymentFieldset({
       <legend className="text-sm font-black uppercase tracking-[0.22em] text-orange-700">
         Forma de pagamento
       </legend>
+      <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+        Dinheiro fica manual na entrega. PIX e cartão iniciam um pagamento
+        online fake/dev pendente; dados sensíveis do cartão não são digitados
+        neste formulário.
+      </p>
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         {CHECKOUT_PAYMENT_OPTIONS.map((option) => {
           const inputId = `payment-${option.method.toLowerCase()}`;
@@ -744,7 +749,7 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
       disabled={disabled || pending}
       type="submit"
     >
-      {pending ? "Criando pedido..." : "Criar pedido em dinheiro"}
+      {pending ? "Criando pedido..." : "Criar pedido"}
     </button>
   );
 }

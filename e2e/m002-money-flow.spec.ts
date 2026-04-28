@@ -152,7 +152,7 @@ test.describe("M002 active catalog to CASH order tracking", () => {
       expectNoBrowserDiagnostics(diagnostics, "customer login");
     });
 
-    await test.step("submit checkout with CASH and disabled future payment methods", async () => {
+    await test.step("submit checkout with default CASH and unselected online payment methods", async () => {
       await expect(
         page.getByRole("heading", { name: "Revisão do pedido", exact: true }),
       ).toBeVisible();
@@ -171,10 +171,10 @@ test.describe("M002 active catalog to CASH order tracking", () => {
 
       await expect(cash).toBeEnabled();
       await expect(cash).toBeChecked();
-      await expect(pix).toBeDisabled();
-      await expect(card).toBeDisabled();
-      await expect(page.getByText("PIX ainda não está disponível para concluir pedidos.")).toBeVisible();
-      await expect(page.getByText("Cartão ainda não está disponível para concluir pedidos.")).toBeVisible();
+      await expect(pix).toBeEnabled();
+      await expect(pix).not.toBeChecked();
+      await expect(card).toBeEnabled();
+      await expect(card).not.toBeChecked();
 
       await page.getByLabel("Nome para entrega", { exact: true }).fill(fixture.customerName);
       await page.getByLabel("Telefone para contato", { exact: true }).fill(fixture.customerPhone);
@@ -194,7 +194,7 @@ test.describe("M002 active catalog to CASH order tracking", () => {
 
       await Promise.all([
         page.waitForURL(/\/pedido\/PED-[A-Z0-9-]+$/u),
-        page.getByRole("button", { name: "Criar pedido em dinheiro", exact: true }).click(),
+        page.getByRole("button", { name: "Criar pedido", exact: true }).click(),
       ]);
 
       publicCode = readPublicCodeFromUrl(page.url());

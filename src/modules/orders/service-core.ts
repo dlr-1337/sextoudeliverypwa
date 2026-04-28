@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+import type {
+  PaymentGatewayProvider,
+  PaymentInitiationFailureCode,
+  PaymentInitiationInput,
+  PaymentInitiationResult,
+  PaymentInitiationSuccessData,
+} from "../payments/types";
 import type { CheckoutFieldErrors, CheckoutOrderPayload } from "./schemas";
 
 export const CASH_ORDER_ERROR_MESSAGES = {
@@ -13,6 +20,22 @@ export const CASH_ORDER_ERROR_MESSAGES = {
     "Todos os produtos precisam pertencer à mesma loja.",
   PUBLIC_CODE_COLLISION:
     "Não foi possível gerar o código público do pedido. Tente novamente.",
+  INTERNAL_ORDER_ID_INVALID:
+    "Não foi possível preparar o pagamento online agora. Tente novamente.",
+  INVALID_APP_BASE_URL:
+    "Não foi possível iniciar o pagamento online agora. Tente novamente.",
+  PAYMENT_PROVIDER_CONFIG_INVALID:
+    "Pagamento online indisponível no momento. Tente outro método.",
+  PAYMENT_PROVIDER_INVALID_REQUEST:
+    "Não foi possível iniciar o pagamento online. Revise o pedido e tente novamente.",
+  PAYMENT_PROVIDER_UNSUPPORTED_METHOD:
+    "Método de pagamento online indisponível. Escolha outro método.",
+  PAYMENT_PROVIDER_UNAVAILABLE:
+    "Provedor de pagamento indisponível. Tente novamente.",
+  PAYMENT_PROVIDER_REJECTED:
+    "Pagamento não pôde ser iniciado. Tente outro método.",
+  PAYMENT_PROVIDER_MALFORMED_RESULT:
+    "Não foi possível confirmar o pagamento online agora. Tente novamente.",
   TRANSACTION_FAILED: "Não foi possível criar o pedido agora. Tente novamente.",
 } as const;
 
@@ -65,7 +88,9 @@ export const CASH_ORDER_PRODUCT_SELECT = {
 } as const;
 
 export const PUBLIC_ORDER_CODE_PATTERN = /^PED-[A-Z0-9][A-Z0-9-]{2,48}$/u;
+export const INTERNAL_ORDER_ID_MAX_LENGTH = 128;
 export const DEFAULT_PUBLIC_CODE_ATTEMPTS = 5;
+export const DEFAULT_PIX_EXPIRATION_MINUTES = 30;
 
 export const PUBLIC_ORDER_READ_SELECT = {
   publicCode: true,
@@ -102,6 +127,10 @@ export const PUBLIC_ORDER_READ_SELECT = {
       method: true,
       status: true,
       amount: true,
+      checkoutUrl: true,
+      pixQrCode: true,
+      pixCopyPaste: true,
+      pixExpiresAt: true,
       paidAt: true,
       failedAt: true,
       createdAt: true,
@@ -448,10 +477,23 @@ export type PublicOrderItemDto = {
   createdAt: Date;
 };
 
+export type PublicOrderPaymentInstructionsDto =
+  | {
+      method: "PIX";
+      qrCode: string;
+      copyPaste: string;
+      expiresAt: Date;
+    }
+  | {
+      method: "CARD";
+      checkoutUrl: string;
+    };
+
 export type PublicOrderPaymentDto = {
   method: PaymentMethodValue;
   status: PaymentStatusValue;
   amount: string;
+  instructions: PublicOrderPaymentInstructionsDto | null;
   paidAt: Date | null;
   failedAt: Date | null;
   createdAt: Date;
@@ -630,6 +672,7 @@ export type CashOrderProductFindManyArgs = {
 };
 
 export type CashOrderCreateData = {
+  id?: string;
   publicCode: string;
   establishmentId: string;
   customerId: string;
@@ -685,6 +728,7 @@ export type CashOrderPaymentCreateData = {
   providerPaymentId: string | null;
   providerStatus: string | null;
   providerPayload: null;
+  checkoutUrl: string | null;
   pixQrCode: string | null;
   pixCopyPaste: string | null;
   pixExpiresAt: Date | null;
@@ -727,6 +771,10 @@ export type PublicOrderReadRow = {
     method: PaymentMethodValue;
     status: PaymentStatusValue;
     amount: DecimalLike;
+    checkoutUrl: string | null;
+    pixQrCode: string | null;
+    pixCopyPaste: string | null;
+    pixExpiresAt: Date | null;
     paidAt: Date | null;
     failedAt: Date | null;
     createdAt: Date;
@@ -971,6 +1019,26 @@ export type OrderServiceClient = CashOrderServiceClient<OrderServiceTransactionC
 };
 
 export type CashOrderPublicCodeGenerator = (now: Date) => string;
+export type CheckoutOrderInternalIdGenerator = (now: Date) => string;
+export type PaymentGatewayProviderGetter = () => PaymentGatewayProvider;
+export type CheckoutAppBaseUrlGetter = () => string;
+
+export type CheckoutPaymentPersistence = Extract<
+  PaymentInitiationSuccessData,
+  { method: "PIX" | "CARD" }
+>["persistence"];
+
+export type CheckoutPaymentInitiation = {
+  provider: PaymentGatewayProvider;
+  persistence: CheckoutPaymentPersistence;
+};
+
+export type CheckoutOrderServiceCoreDependencies = CashOrderServiceCoreDependencies & {
+  getPaymentGatewayProvider?: PaymentGatewayProviderGetter;
+  generateInternalOrderId?: CheckoutOrderInternalIdGenerator;
+  getAppBaseUrl?: CheckoutAppBaseUrlGetter;
+  pixExpirationMinutes?: number;
+};
 
 export type CashOrderServiceCoreDependencies = {
   db: CashOrderServiceClient;
@@ -980,7 +1048,7 @@ export type CashOrderServiceCoreDependencies = {
 };
 
 export type OrderServiceCoreDependencies = Omit<
-  CashOrderServiceCoreDependencies,
+  CheckoutOrderServiceCoreDependencies,
   "db"
 > & {
   db: OrderServiceClient;
@@ -988,6 +1056,31 @@ export type OrderServiceCoreDependencies = Omit<
 };
 
 type ItemSnapshot = CashOrderItemCreateManyData;
+type CheckoutPaymentCreateDataWithoutOrderId = Omit<
+  CashOrderPaymentCreateData,
+  "orderId"
+>;
+
+type CheckoutPaymentPreparation = {
+  orderId?: string;
+  orderPaymentStatus: PaymentStatusValue;
+  payment: CheckoutPaymentCreateDataWithoutOrderId;
+};
+
+type CheckoutPaymentPreparationInput = {
+  payload: CheckoutOrderPayload;
+  establishmentId: string;
+  publicCode: string;
+  totalCents: number;
+  timestamp: Date;
+  amount: string;
+};
+
+type ValidatedProviderPaymentInput = {
+  provider: PaymentGatewayProvider;
+  requestedMethod: "PIX" | "CARD";
+  result: PaymentInitiationResult;
+};
 
 type ValidatedProductLine = {
   product: CashOrderDbProduct;
@@ -1161,6 +1254,7 @@ export function createCashOrderCore(
             providerPaymentId: null,
             providerStatus: null,
             providerPayload: null,
+            checkoutUrl: null,
             pixQrCode: null,
             pixCopyPaste: null,
             pixExpiresAt: null,
@@ -1198,21 +1292,30 @@ export type CashOrderServiceCore = ReturnType<typeof createCashOrderCore>;
 export function createOrderServiceCore(
   dependencies: OrderServiceCoreDependencies,
 ) {
-  const cashOrderCore = createCashOrderCore(dependencies);
+  const db = dependencies.db;
   const enums = dependencies.enums ?? DEFAULT_CASH_ORDER_ENUMS;
   const now = dependencies.now ?? (() => new Date());
+  const generatePublicCode =
+    dependencies.generatePublicCode ?? defaultGeneratePublicCode;
+  const generateInternalOrderId =
+    dependencies.generateInternalOrderId ?? defaultGenerateInternalOrderId;
+  const getPaymentGatewayProvider = dependencies.getPaymentGatewayProvider;
+  const getAppBaseUrl = dependencies.getAppBaseUrl ?? (() => "");
+  const pixExpirationMinutes = normalizePixExpirationMinutes(
+    dependencies.pixExpirationMinutes,
+  );
   const maxPublicCodeAttempts = normalizePublicCodeAttempts(
     dependencies.maxPublicCodeAttempts,
   );
 
-  async function createCashOrder(
+  async function createCheckoutOrder(
     customerIdInput: unknown,
     payload: CheckoutOrderPayload,
   ): Promise<CashOrderResult<CreatedCashOrder>> {
     let lastPublicCodeFailure: CashOrderFailure | null = null;
 
     for (let attempt = 0; attempt < maxPublicCodeAttempts; attempt += 1) {
-      const result = await cashOrderCore.createCashOrder(customerIdInput, payload);
+      const result = await createCheckoutOrderOnce(customerIdInput, payload);
 
       if (result.ok || result.code !== "PUBLIC_CODE_COLLISION") {
         return result;
@@ -1225,6 +1328,337 @@ export function createOrderServiceCore(
       lastPublicCodeFailure ??
       cashOrderFailure("PUBLIC_CODE_COLLISION", { retryable: true })
     );
+  }
+
+  async function createCashOrder(
+    customerIdInput: unknown,
+    payload: CheckoutOrderPayload,
+  ): Promise<CashOrderResult<CreatedCashOrder>> {
+    if (payload.paymentMethod !== enums.paymentMethod.CASH) {
+      return cashOrderFailure("UNSUPPORTED_PAYMENT_METHOD", {
+        fieldErrors: {
+          paymentMethod: [CASH_ORDER_ERROR_MESSAGES.UNSUPPORTED_PAYMENT_METHOD],
+        },
+      });
+    }
+
+    return createCheckoutOrder(customerIdInput, payload);
+  }
+
+  async function createCheckoutOrderOnce(
+    customerIdInput: unknown,
+    payload: CheckoutOrderPayload,
+  ): Promise<CashOrderResult<CreatedCashOrder>> {
+    const customerId = parseAuthenticatedCustomerId(customerIdInput);
+
+    if (!customerId.ok) {
+      return customerId;
+    }
+
+    const payloadValidation = validateParsedPayload(payload, enums, [
+      "CASH",
+      "PIX",
+      "CARD",
+    ]);
+
+    if (!payloadValidation.ok) {
+      return payloadValidation;
+    }
+
+    try {
+      return await db.$transaction(async (tx) => {
+        const establishment = await tx.establishment.findUnique({
+          where: { id: payload.establishmentId },
+          select: CASH_ORDER_ESTABLISHMENT_SELECT,
+        });
+
+        if (!establishment || establishment.status !== enums.establishmentStatus.ACTIVE) {
+          return cashOrderFailure("STORE_UNAVAILABLE");
+        }
+
+        const deliveryFeeCents = moneyToCents(establishment.deliveryFee);
+
+        if (deliveryFeeCents === null || deliveryFeeCents < 0) {
+          return cashOrderFailure("STORE_UNAVAILABLE");
+        }
+
+        const products = await tx.product.findMany({
+          where: { id: { in: payload.items.map((item) => item.productId) } },
+          select: CASH_ORDER_PRODUCT_SELECT,
+        });
+        const productsById = new Map(products.map((product) => [product.id, product]));
+        const validatedLines = validateProductLines(
+          payload,
+          establishment.id,
+          productsById,
+          enums,
+        );
+
+        if (!validatedLines.ok) {
+          return validatedLines;
+        }
+
+        const timestamp = now();
+        const publicCode = generatePublicCode(timestamp);
+
+        if (!isPublicOrderCode(publicCode)) {
+          return cashOrderFailure("PUBLIC_CODE_COLLISION", { retryable: true });
+        }
+
+        const subtotalCents = validatedLines.data.reduce(
+          (sum, line) => sum + line.lineTotalCents,
+          0,
+        );
+        const discountCents = 0;
+        const totalCents = subtotalCents + deliveryFeeCents - discountCents;
+        const total = formatCents(totalCents);
+        const paymentPreparation = await prepareCheckoutPayment({
+          payload,
+          establishmentId: establishment.id,
+          publicCode,
+          totalCents,
+          timestamp,
+          amount: total,
+        });
+
+        if (!paymentPreparation.ok) {
+          return paymentPreparation;
+        }
+
+        const order = await tx.order.create({
+          data: {
+            ...(paymentPreparation.data.orderId
+              ? { id: paymentPreparation.data.orderId }
+              : {}),
+            publicCode,
+            establishmentId: establishment.id,
+            customerId: customerId.data,
+            status: enums.orderStatus.PENDING,
+            customerName: payload.customerName,
+            customerPhone: payload.customerPhone,
+            deliveryAddress: formatDeliveryAddress(payload),
+            deliveryStreet: payload.deliveryStreet,
+            deliveryNumber: payload.deliveryNumber,
+            deliveryComplement: payload.deliveryComplement,
+            deliveryNeighborhood: payload.deliveryNeighborhood,
+            deliveryCity: payload.deliveryCity,
+            deliveryState: payload.deliveryState,
+            deliveryPostalCode: payload.deliveryPostalCode,
+            deliveryReference: payload.deliveryReference,
+            generalObservation: payload.generalObservation,
+            paymentMethod: payload.paymentMethod,
+            paymentStatus: paymentPreparation.data.orderPaymentStatus,
+            subtotal: formatCents(subtotalCents),
+            deliveryFee: formatCents(deliveryFeeCents),
+            discount: formatCents(discountCents),
+            total,
+            notes: null,
+            placedAt: timestamp,
+          },
+          select: { id: true, publicCode: true },
+        });
+        const itemSnapshots = toItemSnapshots(order.id, validatedLines.data);
+
+        await tx.orderItem.createMany({ data: itemSnapshots });
+        await tx.payment.create({
+          data: {
+            orderId: order.id,
+            ...paymentPreparation.data.payment,
+          },
+        });
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            status: enums.orderStatus.PENDING,
+            changedById: customerId.data,
+            note: "Pedido criado pelo checkout.",
+            createdAt: timestamp,
+          },
+        });
+
+        return cashOrderSuccess({
+          publicCode: order.publicCode,
+          redirectPath: `/pedido/${order.publicCode}`,
+        });
+      });
+    } catch (error) {
+      return cashOrderFailureFromTransaction(error);
+    }
+  }
+
+  async function prepareCheckoutPayment({
+    payload,
+    establishmentId,
+    publicCode,
+    totalCents,
+    timestamp,
+    amount,
+  }: CheckoutPaymentPreparationInput): Promise<
+    CashOrderResult<CheckoutPaymentPreparation>
+  > {
+    if (payload.paymentMethod === enums.paymentMethod.CASH) {
+      return cashOrderSuccess({
+        orderPaymentStatus: enums.paymentStatus.MANUAL_CASH_ON_DELIVERY,
+        payment: {
+          method: enums.paymentMethod.CASH,
+          status: enums.paymentStatus.MANUAL_CASH_ON_DELIVERY,
+          amount,
+          provider: null,
+          providerPaymentId: null,
+          providerStatus: null,
+          providerPayload: null,
+          checkoutUrl: null,
+          pixQrCode: null,
+          pixCopyPaste: null,
+          pixExpiresAt: null,
+          cardBrand: null,
+          cardLast4: null,
+          paidAt: null,
+          failedAt: null,
+        },
+      });
+    }
+
+    const onlineMethod = toOnlinePaymentMethod(payload.paymentMethod);
+
+    if (!onlineMethod) {
+      return cashOrderFailure("UNSUPPORTED_PAYMENT_METHOD", {
+        fieldErrors: {
+          paymentMethod: [CASH_ORDER_ERROR_MESSAGES.UNSUPPORTED_PAYMENT_METHOD],
+        },
+      });
+    }
+
+    const internalOrderId = generateInternalOrderId(timestamp);
+
+    if (!isValidInternalOrderId(internalOrderId)) {
+      return cashOrderFailure("INTERNAL_ORDER_ID_INVALID", { retryable: true });
+    }
+
+    const initiationInput = buildOnlinePaymentInitiationInput({
+      method: onlineMethod,
+      internalOrderId,
+      publicCode,
+      establishmentId,
+      totalCents,
+      payload,
+      timestamp,
+    });
+
+    if (!initiationInput.ok) {
+      return initiationInput;
+    }
+
+    const provider = getOnlinePaymentProvider();
+
+    if (!provider.ok) {
+      return provider;
+    }
+
+    let providerResult: PaymentInitiationResult;
+
+    try {
+      providerResult = await provider.data.initiatePayment(initiationInput.data);
+    } catch {
+      return cashOrderFailure("PAYMENT_PROVIDER_UNAVAILABLE", { retryable: true });
+    }
+
+    const payment = validateProviderPaymentResult({
+      provider: provider.data,
+      requestedMethod: onlineMethod,
+      result: providerResult,
+    });
+
+    if (!payment.ok) {
+      return payment;
+    }
+
+    return cashOrderSuccess({
+      orderId: internalOrderId,
+      orderPaymentStatus: enums.paymentStatus.PENDING,
+      payment: {
+        method: onlineMethod,
+        status: enums.paymentStatus.PENDING,
+        amount,
+        provider: payment.data.persistence.provider,
+        providerPaymentId: payment.data.persistence.providerPaymentId,
+        providerStatus: payment.data.persistence.providerStatus,
+        providerPayload: null,
+        checkoutUrl: payment.data.persistence.checkoutUrl,
+        pixQrCode: payment.data.persistence.pixQrCode,
+        pixCopyPaste: payment.data.persistence.pixCopyPaste,
+        pixExpiresAt: payment.data.persistence.pixExpiresAt,
+        cardBrand: null,
+        cardLast4: null,
+        paidAt: null,
+        failedAt: null,
+      },
+    });
+  }
+
+  function buildOnlinePaymentInitiationInput({
+    method,
+    internalOrderId,
+    publicCode,
+    establishmentId,
+    totalCents,
+    payload,
+    timestamp,
+  }: {
+    method: "PIX" | "CARD";
+    internalOrderId: string;
+    publicCode: string;
+    establishmentId: string;
+    totalCents: number;
+    payload: CheckoutOrderPayload;
+    timestamp: Date;
+  }): CashOrderResult<PaymentInitiationInput> {
+    const baseInput = {
+      internalOrderId,
+      publicOrderCode: publicCode,
+      establishmentId,
+      amountCents: totalCents,
+      currency: "BRL" as const,
+      customer: {
+        name: payload.customerName,
+        phone: payload.customerPhone,
+        email: null,
+      },
+      requestedAt: timestamp,
+    };
+
+    if (method === "PIX") {
+      return cashOrderSuccess({
+        ...baseInput,
+        method,
+        expiresAt: new Date(timestamp.getTime() + pixExpirationMinutes * 60_000),
+      });
+    }
+
+    const returnUrl = buildCheckoutReturnUrl(getAppBaseUrl(), publicCode);
+
+    if (!returnUrl) {
+      return cashOrderFailure("INVALID_APP_BASE_URL", { retryable: true });
+    }
+
+    return cashOrderSuccess({
+      ...baseInput,
+      method,
+      successUrl: returnUrl,
+      cancelUrl: returnUrl,
+    });
+  }
+
+  function getOnlinePaymentProvider(): CashOrderResult<PaymentGatewayProvider> {
+    if (!getPaymentGatewayProvider) {
+      return cashOrderFailure("PAYMENT_PROVIDER_CONFIG_INVALID");
+    }
+
+    try {
+      return cashOrderSuccess(getPaymentGatewayProvider());
+    } catch {
+      return cashOrderFailure("PAYMENT_PROVIDER_CONFIG_INVALID");
+    }
   }
 
   async function getPublicOrderByCode(
@@ -1483,6 +1917,7 @@ export function createOrderServiceCore(
   }
 
   return {
+    createCheckoutOrder,
     createCashOrder,
     getPublicOrderByCode,
     listMerchantOrdersForOwner,
@@ -1627,6 +2062,7 @@ export function toPublicOrderDto(order: PublicOrderReadRow): PublicOrderDto {
           method: order.payment.method,
           status: order.payment.status,
           amount: formatMoneyForDto(order.payment.amount),
+          instructions: toPublicOrderPaymentInstructionsDto(order.payment),
           paidAt: order.payment.paidAt,
           failedAt: order.payment.failedAt,
           createdAt: order.payment.createdAt,
@@ -1639,6 +2075,44 @@ export function toPublicOrderDto(order: PublicOrderReadRow): PublicOrderDto {
       createdAt: history.createdAt,
     })),
   };
+}
+
+function toPublicOrderPaymentInstructionsDto(
+  payment: PublicOrderReadRow["payment"],
+): PublicOrderPaymentInstructionsDto | null {
+  if (!payment) {
+    return null;
+  }
+
+  if (payment.method === "PIX") {
+    if (
+      isSafePublicInstructionText(payment.pixQrCode) &&
+      isSafePublicInstructionText(payment.pixCopyPaste) &&
+      isValidDateValue(payment.pixExpiresAt)
+    ) {
+      return {
+        method: "PIX",
+        qrCode: payment.pixQrCode,
+        copyPaste: payment.pixCopyPaste,
+        expiresAt: payment.pixExpiresAt,
+      };
+    }
+
+    return null;
+  }
+
+  if (payment.method === "CARD" && isAbsoluteHttpUrl(payment.checkoutUrl)) {
+    return {
+      method: "CARD",
+      checkoutUrl: payment.checkoutUrl,
+    };
+  }
+
+  return null;
+}
+
+function isSafePublicInstructionText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 export function toMerchantOrderListItemDto(
@@ -1803,6 +2277,158 @@ function normalizePublicCodeAttempts(input: number | undefined): number {
   return input;
 }
 
+function normalizePixExpirationMinutes(input: number | undefined): number {
+  if (typeof input !== "number" || !Number.isInteger(input) || input < 1) {
+    return DEFAULT_PIX_EXPIRATION_MINUTES;
+  }
+
+  return input;
+}
+
+function defaultGenerateInternalOrderId(now: Date) {
+  const entropy = Math.random().toString(36).slice(2, 14);
+  const timestamp = now.getTime().toString(36);
+
+  return `order_${timestamp}_${entropy}`;
+}
+
+function isValidInternalOrderId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.trim() === value &&
+    value.length > 0 &&
+    value.length <= INTERNAL_ORDER_ID_MAX_LENGTH
+  );
+}
+
+function buildCheckoutReturnUrl(appBaseUrl: string, publicCode: string) {
+  try {
+    const baseUrl = new URL(appBaseUrl);
+
+    if (!["http:", "https:"].includes(baseUrl.protocol)) {
+      return null;
+    }
+
+    if (baseUrl.username || baseUrl.password) {
+      return null;
+    }
+
+    return new URL(`/pedido/${encodeURIComponent(publicCode)}`, baseUrl.origin).toString();
+  } catch {
+    return null;
+  }
+}
+
+function validateProviderPaymentResult({
+  provider,
+  requestedMethod,
+  result,
+}: ValidatedProviderPaymentInput): CashOrderResult<CheckoutPaymentInitiation> {
+  if (!result.ok) {
+    return cashOrderFailure(mapProviderFailureCode(result.code), {
+      retryable: result.retryable || result.code === "PAYMENT_PROVIDER_UNAVAILABLE",
+    });
+  }
+
+  const data = result.data;
+
+  if (data.method !== requestedMethod || data.persistence.method !== requestedMethod) {
+    return cashOrderFailure("PAYMENT_PROVIDER_MALFORMED_RESULT", {
+      retryable: true,
+    });
+  }
+
+  if (
+    data.persistence.status !== "PENDING" ||
+    data.persistence.provider !== provider.provider ||
+    !isNonEmptyString(data.persistence.provider) ||
+    !isNonEmptyString(data.persistence.providerPaymentId) ||
+    !isNonEmptyString(data.persistence.providerStatus) ||
+    data.persistence.providerPayload !== null ||
+    data.persistence.paidAt !== null ||
+    data.persistence.failedAt !== null
+  ) {
+    return cashOrderFailure("PAYMENT_PROVIDER_MALFORMED_RESULT", {
+      retryable: true,
+    });
+  }
+
+  if (requestedMethod === "PIX") {
+    if (
+      data.persistence.checkoutUrl !== null ||
+      !isNonEmptyString(data.persistence.pixQrCode) ||
+      !isNonEmptyString(data.persistence.pixCopyPaste) ||
+      !isValidDateValue(data.persistence.pixExpiresAt) ||
+      data.persistence.cardBrand !== null ||
+      data.persistence.cardLast4 !== null ||
+      data.publicInstructions.method !== "PIX" ||
+      data.publicInstructions.checkoutUrl !== null ||
+      data.publicInstructions.qrCode !== data.persistence.pixQrCode ||
+      data.publicInstructions.copyPaste !== data.persistence.pixCopyPaste ||
+      data.publicInstructions.expiresAtIso !==
+        data.persistence.pixExpiresAt.toISOString()
+    ) {
+      return cashOrderFailure("PAYMENT_PROVIDER_MALFORMED_RESULT", {
+        retryable: true,
+      });
+    }
+
+    return cashOrderSuccess({ provider, persistence: data.persistence });
+  }
+
+  if (
+    !isAbsoluteHttpUrl(data.persistence.checkoutUrl) ||
+    data.persistence.pixQrCode !== null ||
+    data.persistence.pixCopyPaste !== null ||
+    data.persistence.pixExpiresAt !== null ||
+    data.persistence.cardBrand !== null ||
+    data.persistence.cardLast4 !== null ||
+    data.publicInstructions.method !== "CARD" ||
+    data.publicInstructions.checkoutUrl !== data.persistence.checkoutUrl
+  ) {
+    return cashOrderFailure("PAYMENT_PROVIDER_MALFORMED_RESULT", {
+      retryable: true,
+    });
+  }
+
+  return cashOrderSuccess({ provider, persistence: data.persistence });
+}
+
+function mapProviderFailureCode(
+  code: PaymentInitiationFailureCode,
+): CashOrderFailureCode {
+  switch (code) {
+    case "PAYMENT_PROVIDER_CONFIG_INVALID":
+    case "PAYMENT_PROVIDER_INVALID_REQUEST":
+    case "PAYMENT_PROVIDER_UNSUPPORTED_METHOD":
+    case "PAYMENT_PROVIDER_UNAVAILABLE":
+    case "PAYMENT_PROVIDER_REJECTED":
+      return code;
+  }
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isValidDateValue(value: unknown): value is Date {
+  return value instanceof Date && !Number.isNaN(value.getTime());
+}
+
+function isAbsoluteHttpUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length < 1) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
 function parseMerchantOwnerId(ownerIdInput: unknown): MerchantOrderListResult<string> {
   const parsed = merchantOrderOwnerInputSchema.safeParse({ ownerId: ownerIdInput });
 
@@ -1906,11 +2532,18 @@ function parseAuthenticatedCustomerId(
   return cashOrderSuccess(customerId);
 }
 
+function toOnlinePaymentMethod(
+  method: PaymentMethodValue,
+): "PIX" | "CARD" | null {
+  return method === "PIX" || method === "CARD" ? method : null;
+}
+
 function validateParsedPayload(
   payload: CheckoutOrderPayload,
   enums: CashOrderServiceEnums,
+  allowedPaymentMethods: readonly PaymentMethodValue[] = ["CASH"],
 ): CashOrderResult<true> {
-  if (payload.paymentMethod !== enums.paymentMethod.CASH) {
+  if (!allowedPaymentMethods.includes(payload.paymentMethod)) {
     return cashOrderFailure("UNSUPPORTED_PAYMENT_METHOD", {
       fieldErrors: { paymentMethod: [CASH_ORDER_ERROR_MESSAGES.UNSUPPORTED_PAYMENT_METHOD] },
     });

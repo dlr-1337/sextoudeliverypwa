@@ -209,10 +209,15 @@ test.describe("M003 browser order operation and public tracking", () => {
         ).toBeVisible();
 
         const cash = page.getByRole("radio", { name: /^Dinheiro/u });
+        const pix = page.getByRole("radio", { name: /^PIX/u });
+        const card = page.getByRole("radio", { name: /^Cartão/u });
+
         await expect(cash).toBeEnabled();
         await expect(cash).toBeChecked();
-        await expect(page.getByRole("radio", { name: /^PIX/u })).toBeDisabled();
-        await expect(page.getByRole("radio", { name: /^Cartão/u })).toBeDisabled();
+        await expect(pix).toBeEnabled();
+        await expect(pix).not.toBeChecked();
+        await expect(card).toBeEnabled();
+        await expect(card).not.toBeChecked();
 
         await page.getByLabel("Nome para entrega", { exact: true }).fill(fixtureData.customerName);
         await page.getByLabel("Telefone para contato", { exact: true }).fill(fixtureData.customerPhone);
@@ -232,7 +237,7 @@ test.describe("M003 browser order operation and public tracking", () => {
 
         await Promise.all([
           page.waitForURL(/\/pedido\/PED-[A-Z0-9-]+$/u),
-          page.getByRole("button", { name: "Criar pedido em dinheiro", exact: true }).click(),
+          page.getByRole("button", { name: "Criar pedido", exact: true }).click(),
         ]);
 
         publicCode = readPublicCodeFromUrl(page.url());

@@ -24,10 +24,13 @@
     "smoke:m002": "npm run smoke:s04-cash-order && npm run smoke:m002-fixture",
     "e2e:m002": "node scripts/require-env.mjs DATABASE_URL AUTH_SECRET SESSION_COOKIE_NAME SESSION_MAX_AGE_DAYS && playwright test e2e/m002-money-flow.spec.ts",
     "smoke:m003": "node scripts/require-env.mjs DATABASE_URL && tsx scripts/verify-m003-order-operations.ts",
+    "smoke:m004": "node scripts/require-env.mjs DATABASE_URL FAKE_PAYMENT_PROVIDER FAKE_PAYMENT_WEBHOOK_SECRET FAKE_PAYMENT_APPROVAL_MODE && tsx scripts/verify-m004-payments-webhooks.ts",
     "e2e:m003": "node scripts/require-env.mjs DATABASE_URL AUTH_SECRET SESSION_COOKIE_NAME SESSION_MAX_AGE_DAYS && playwright test e2e/m003-order-operations.spec.ts",
+    "e2e:m004": "node scripts/require-env.mjs DATABASE_URL AUTH_SECRET SESSION_COOKIE_NAME SESSION_MAX_AGE_DAYS FAKE_PAYMENT_PROVIDER FAKE_PAYMENT_WEBHOOK_SECRET FAKE_PAYMENT_APPROVAL_MODE && playwright test e2e/m004-payments.spec.ts",
     "verify:m001": "npm run db:generate && npm test && npm run lint && npm run build && npm run db:deploy && npm run db:seed && npm run smoke:m001",
     "verify:m002": "npm run db:generate && npm test && npm run lint && npm run build && npm run db:deploy && npm run db:seed && npm run smoke:m001 && npm run smoke:m002 && npm run e2e:m002",
-    "verify:m003": "npm run db:generate && npm test && npm run lint && npm run build && npm run db:deploy && npm run db:seed && npm run smoke:m001 && npm run smoke:m002 && npm run smoke:m003 && npm run e2e:m002 && npm run e2e:m003"
+    "verify:m003": "npm run db:generate && npm test && npm run lint && npm run build && npm run db:deploy && npm run db:seed && npm run smoke:m001 && npm run smoke:m002 && npm run smoke:m003 && npm run e2e:m002 && npm run e2e:m003",
+    "verify:m004": "npm run db:generate && npm test && npm run lint && npm run build && npm run db:deploy && npm run db:seed && npm run smoke:m001 && npm run smoke:m002 && npm run smoke:m003 && npm run smoke:m004 && npm run e2e:m002 && npm run e2e:m003 && npm run e2e:m004"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

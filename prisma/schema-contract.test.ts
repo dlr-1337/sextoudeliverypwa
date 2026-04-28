@@ -30,6 +30,9 @@ const orderPaymentContractMigration = migrationByName(
 const orderRejectedStatusMigration = migrationByName(
   "00000000000004_order_rejected_status",
 );
+const paymentCheckoutUrlMigration = migrationByName(
+  "00000000000005_payment_checkout_url",
+);
 const dbClient = readFileSync(projectPath("src", "server", "db.ts"), "utf8");
 const prismaConfig = readFileSync(projectPath("prisma.config.ts"), "utf8");
 const generatedClient = readFileSync(
@@ -50,6 +53,14 @@ const generatedPayment = readFileSync(
 );
 const generatedClientClass = readFileSync(
   projectPath("src", "generated", "prisma", "internal", "class.ts"),
+  "utf8",
+);
+const generatedPrismaNamespace = readFileSync(
+  projectPath("src", "generated", "prisma", "internal", "prismaNamespace.ts"),
+  "utf8",
+);
+const generatedModels = readFileSync(
+  projectPath("src", "generated", "prisma", "models.ts"),
   "utf8",
 );
 const packageJson = JSON.parse(readFileSync(projectPath("package.json"), "utf8")) as {
@@ -128,9 +139,17 @@ describe("Prisma database foundation contract", () => {
     expect(migrationNames).toContain("00000000000002_establishment_logo_url");
     expect(migrationNames).toContain("00000000000003_order_payment_contract");
     expect(migrationNames).toContain("00000000000004_order_rejected_status");
+    expect(migrationNames).toContain("00000000000005_payment_checkout_url");
     expect(orderPaymentContractMigration).toContain(
       "-- S01 order/payment contract",
     );
+    for (const { name, sql } of migrations) {
+      if (name !== "00000000000005_payment_checkout_url") {
+        expect(sql, `${name} should not be edited for checkoutUrl`).not.toContain(
+          "checkout_url",
+        );
+      }
+    }
   });
 
   it("declares the required models, enums, and explicit generated client output", () => {
@@ -352,6 +371,7 @@ describe("Prisma database foundation contract", () => {
       /providerPaymentId\s+String\?\s+@unique\s+@map\("provider_payment_id"\)\s+@db\.Text/,
       /providerStatus\s+String\?\s+@map\("provider_status"\)\s+@db\.Text/,
       /providerPayload\s+Json\?\s+@map\("provider_payload"\)\s+@db\.JsonB/,
+      /checkoutUrl\s+String\?\s+@map\("checkout_url"\)\s+@db\.Text/,
       /pixQrCode\s+String\?\s+@map\("pix_qr_code"\)\s+@db\.Text/,
       /pixCopyPaste\s+String\?\s+@map\("pix_copy_paste"\)\s+@db\.Text/,
       /pixExpiresAt\s+DateTime\?\s+@map\("pix_expires_at"\)\s+@db\.Timestamptz/,
@@ -363,6 +383,11 @@ describe("Prisma database foundation contract", () => {
 
     expect(payments).toContain("@@index([status, provider])");
     expect(payments).toContain("@@index([provider])");
+    expect(paymentCheckoutUrlMigration).toContain(
+      'ALTER TABLE "payments" ADD COLUMN "checkout_url" TEXT;',
+    );
+    expect(paymentCheckoutUrlMigration).not.toMatch(/DROP\s+(?:TABLE|COLUMN)/i);
+    expect(paymentCheckoutUrlMigration).not.toMatch(/CREATE\s+TABLE/i);
     expect(migration).toContain(
       'CREATE INDEX "payments_status_provider_idx" ON "payments"("status", "provider");',
     );
@@ -409,7 +434,8 @@ describe("Prisma database foundation contract", () => {
 
     for (const expected of [
       "providerStatus: string | null",
-      "providerPayload",
+      "providerPayload: runtime.JsonValue | null",
+      "checkoutUrl: string | null",
       "pixQrCode: string | null",
       "pixCopyPaste: string | null",
       "pixExpiresAt: Date | null",
@@ -418,6 +444,9 @@ describe("Prisma database foundation contract", () => {
     ]) {
       expect(generatedPayment).toContain(expected);
     }
+
+    expect(generatedPrismaNamespace).toContain("checkoutUrl: 'checkoutUrl'");
+    expect(generatedModels).toContain("export type * from './models/Payment'");
   });
 
   it("stores only a hashed session token and indexes common auth lookups", () => {

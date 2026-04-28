@@ -29,13 +29,13 @@ import {
 
 describe("customer checkout server action core", () => {
   it("rejects missing, wrong-role, and thrown guard failures before payload validation or order creation", async () => {
-    const missingCreateCashOrder = vi.fn();
+    const missingCreateCheckoutOrder = vi.fn();
     const missingGuard = vi.fn(async (rawToken: unknown) => {
       expect(rawToken).toBeUndefined();
       throw new AuthError("TOKEN_INVALID", "raw session token missing");
     });
     const missingCore = createCheckoutActionCore({
-      createCashOrder: missingCreateCashOrder,
+      createCheckoutOrder: missingCreateCheckoutOrder,
       readSessionCookie: () => undefined,
       requireCustomerSession: missingGuard,
     });
@@ -51,10 +51,10 @@ describe("customer checkout server action core", () => {
     });
     expect(JSON.stringify(missing)).not.toContain("session token");
     expect(missing).not.toHaveProperty("fieldErrors");
-    expect(missingCreateCashOrder).not.toHaveBeenCalled();
+    expect(missingCreateCheckoutOrder).not.toHaveBeenCalled();
 
     for (const role of ["ADMIN", "MERCHANT"] as const) {
-      const createCashOrder = vi.fn();
+      const createCheckoutOrder = vi.fn();
       const roleGuard = vi.fn(async (rawToken: unknown) => {
         expect(rawToken).toBe(`${role.toLowerCase()}-token`);
         throw new AuthError(
@@ -63,7 +63,7 @@ describe("customer checkout server action core", () => {
         );
       });
       const roleCore = createCheckoutActionCore({
-        createCashOrder,
+        createCheckoutOrder,
         readSessionCookie: () => `${role.toLowerCase()}-token`,
         requireCustomerSession: roleGuard,
       });
@@ -78,12 +78,12 @@ describe("customer checkout server action core", () => {
         message: "Você não tem permissão para acessar esta área.",
       });
       expect(JSON.stringify(forbidden)).not.toContain(role);
-      expect(createCashOrder).not.toHaveBeenCalled();
+      expect(createCheckoutOrder).not.toHaveBeenCalled();
     }
 
-    const thrownCreateCashOrder = vi.fn();
+    const thrownCreateCheckoutOrder = vi.fn();
     const thrownCore = createCheckoutActionCore({
-      createCashOrder: thrownCreateCashOrder,
+      createCheckoutOrder: thrownCreateCheckoutOrder,
       readSessionCookie: () => "customer-token",
       requireCustomerSession: async () => {
         throw new Error("Prisma DATABASE_URL tokenHash raw session token");
@@ -103,78 +103,83 @@ describe("customer checkout server action core", () => {
     expect(serializedThrown).not.toContain("DATABASE_URL");
     expect(serializedThrown).not.toContain("tokenHash");
     expect(serializedThrown).not.toContain("raw session token");
-    expect(thrownCreateCashOrder).not.toHaveBeenCalled();
+    expect(thrownCreateCheckoutOrder).not.toHaveBeenCalled();
   });
 
-  it("creates a CASH order through the service with authenticated customer context", async () => {
-    const createCashOrder = vi.fn(async () =>
-      createdOrderResult("PED-20260427-ABC123"),
-    );
-    const requireCustomerSession = vi.fn(async (rawToken: unknown) => {
-      expect(rawToken).toBe("customer-token");
-      return customerSession("customer-a");
-    });
-    const core = createCheckoutActionCore({
-      createCashOrder,
-      readSessionCookie: () => "customer-token",
-      requireCustomerSession,
-    });
+  it("creates CASH, PIX, and CARD checkout orders through the service with authenticated customer context", async () => {
+    for (const { paymentMethod, publicCode } of [
+      { paymentMethod: "CASH", publicCode: "PED-20260427-CASH01" },
+      { paymentMethod: "PIX", publicCode: "PED-20260427-PIX001" },
+      { paymentMethod: "CARD", publicCode: "PED-20260427-CARD01" },
+    ] as const) {
+      const createCheckoutOrder = vi.fn(async () => createdOrderResult(publicCode));
+      const requireCustomerSession = vi.fn(async (rawToken: unknown) => {
+        expect(rawToken).toBe("customer-token");
+        return customerSession("customer-a");
+      });
+      const core = createCheckoutActionCore({
+        createCheckoutOrder,
+        readSessionCookie: () => "customer-token",
+        requireCustomerSession,
+      });
 
-    const created = await core.checkoutOrderAction(
-      CHECKOUT_ACTION_IDLE_STATE,
-      checkoutForm({
-        fields: {
-          deliveryComplement: " ",
-          deliveryReference: " ",
-          generalObservation: " ",
-        },
-        items: [{ productId: " product-a ", quantity: "3" }],
-      }),
-    );
+      const created = await core.checkoutOrderAction(
+        CHECKOUT_ACTION_IDLE_STATE,
+        checkoutForm({
+          fields: {
+            deliveryComplement: " ",
+            deliveryReference: " ",
+            generalObservation: " ",
+            paymentMethod,
+          },
+          items: [{ productId: " product-a ", quantity: "3" }],
+        }),
+      );
 
-    expect(created).toEqual({
-      status: "created",
-      message: CHECKOUT_ACTION_MESSAGES.CREATED,
-      publicCode: "PED-20260427-ABC123",
-      redirectPath: "/pedido/PED-20260427-ABC123",
-    });
-    expect(createCashOrder).toHaveBeenCalledTimes(1);
-    expect(createCashOrder).toHaveBeenCalledWith("customer-a", {
-      establishmentId: "establishment-a",
-      items: [{ productId: "product-a", quantity: 3 }],
-      customerName: "Maria Cliente",
-      customerPhone: "11999999999",
-      deliveryStreet: "Rua das Flores",
-      deliveryNumber: "42A",
-      deliveryComplement: null,
-      deliveryNeighborhood: "Centro",
-      deliveryCity: "São Paulo",
-      deliveryState: "SP",
-      deliveryPostalCode: "01001-000",
-      deliveryReference: null,
-      generalObservation: null,
-      paymentMethod: "CASH",
-    });
-    expect(requireCustomerSession).toHaveBeenCalledTimes(1);
+      expect(created).toEqual({
+        status: "created",
+        message: CHECKOUT_ACTION_MESSAGES.CREATED,
+        publicCode,
+        redirectPath: `/pedido/${publicCode}`,
+      });
+      expect(createCheckoutOrder).toHaveBeenCalledTimes(1);
+      expect(createCheckoutOrder).toHaveBeenCalledWith("customer-a", {
+        establishmentId: "establishment-a",
+        items: [{ productId: "product-a", quantity: 3 }],
+        customerName: "Maria Cliente",
+        customerPhone: "11999999999",
+        deliveryStreet: "Rua das Flores",
+        deliveryNumber: "42A",
+        deliveryComplement: null,
+        deliveryNeighborhood: "Centro",
+        deliveryCity: "São Paulo",
+        deliveryState: "SP",
+        deliveryPostalCode: "01001-000",
+        deliveryReference: null,
+        generalObservation: null,
+        paymentMethod,
+      });
+      expect(requireCustomerSession).toHaveBeenCalledTimes(1);
 
-    const serialized = JSON.stringify(created);
-    for (const forbiddenFragment of [
-      "payload",
-      "values",
-      "customer-a",
-      "Maria Cliente",
-      "product-a",
-      "provider",
-      "orderId",
-    ]) {
-      expect(serialized).not.toContain(forbiddenFragment);
+      const serialized = JSON.stringify(created);
+      for (const forbiddenFragment of [
+        "payload",
+        "values",
+        "customer-a",
+        "Maria Cliente",
+        "product-a",
+        "provider",
+        "orderId",
+      ]) {
+        expect(serialized).not.toContain(forbiddenFragment);
+      }
     }
   });
 
-  it("rejects PIX, CARD, FAKE, and unknown payment submissions before invoking the service", async () => {
-    const { core, createCashOrder } = authenticatedCore();
+  it("rejects FAKE and unknown payment submissions before invoking the service", async () => {
+    const { core, createCheckoutOrder } = authenticatedCore();
 
-    for (const paymentMethod of ["PIX", "CARD", "FAKE", "BOLETO"] as const) {
+    for (const paymentMethod of ["FAKE", "BOLETO"] as const) {
       const state = await core.checkoutOrderAction(
         CHECKOUT_ACTION_IDLE_STATE,
         checkoutForm({ fields: { paymentMethod } }),
@@ -182,24 +187,22 @@ describe("customer checkout server action core", () => {
 
       const errorState = asCheckoutErrorState(state);
       expect(errorState.fieldErrors?.paymentMethod).toContain(
-        "Pague em dinheiro para concluir este pedido.",
+        "Escolha dinheiro, PIX ou cartão para concluir este pedido.",
       );
       expect(errorState.formErrors).toEqual([]);
+      expect(errorState.values?.paymentMethod).toBe("");
 
       const serialized = JSON.stringify(errorState);
       expect(serialized).not.toContain("provider");
       expect(serialized).not.toContain("publicCode");
-
-      if (paymentMethod === "FAKE") {
-        expect(serialized).not.toContain("FAKE");
-      }
+      expect(serialized).not.toContain(paymentMethod);
     }
 
-    expect(createCashOrder).not.toHaveBeenCalled();
+    expect(createCheckoutOrder).not.toHaveBeenCalled();
   });
 
   it("coerces quantity strings before service invocation and reports empty or malformed cart lines", async () => {
-    const { core, createCashOrder } = authenticatedCore();
+    const { core, createCheckoutOrder } = authenticatedCore();
 
     const created = await core.checkoutOrderAction(
       CHECKOUT_ACTION_IDLE_STATE,
@@ -207,7 +210,7 @@ describe("customer checkout server action core", () => {
     );
 
     expect(created.status).toBe("created");
-    expect(createCashOrder).toHaveBeenCalledWith(
+    expect(createCheckoutOrder).toHaveBeenCalledWith(
       "customer-a",
       expect.objectContaining({
         items: [{ productId: "product-a", quantity: 2 }],
@@ -225,6 +228,25 @@ describe("customer checkout server action core", () => {
       { productId: "product-a", quantity: "abc" },
     ]);
 
+    const duplicateItemKeyForm = checkoutForm();
+    duplicateItemKeyForm.append("items.0.quantity", "4242424242424242");
+
+    const duplicateItemKey = await core.checkoutOrderAction(
+      CHECKOUT_ACTION_IDLE_STATE,
+      duplicateItemKeyForm,
+    );
+
+    const duplicateItemKeyError = asCheckoutErrorState(duplicateItemKey);
+    expect(duplicateItemKeyError.fieldErrors?.["items.0.quantity"]).toContain(
+      "Campo não permitido.",
+    );
+    expect(duplicateItemKeyError.values?.items).toEqual([
+      { productId: "product-a", quantity: "" },
+    ]);
+    expect(JSON.stringify(duplicateItemKeyError)).not.toContain(
+      "4242424242424242",
+    );
+
     const emptyCart = await core.checkoutOrderAction(
       CHECKOUT_ACTION_IDLE_STATE,
       checkoutForm({ items: [] }),
@@ -234,11 +256,11 @@ describe("customer checkout server action core", () => {
     expect(emptyCartError.fieldErrors?.items).toContain(
       "Adicione pelo menos um item ao pedido.",
     );
-    expect(createCashOrder).toHaveBeenCalledTimes(1);
+    expect(createCheckoutOrder).toHaveBeenCalledTimes(1);
   });
 
   it("maps malformed required fields and oversized optional text to field errors before service invocation", async () => {
-    const { core, createCashOrder } = authenticatedCore();
+    const { core, createCheckoutOrder } = authenticatedCore();
 
     const malformed = await core.checkoutOrderAction(
       CHECKOUT_ACTION_IDLE_STATE,
@@ -265,11 +287,11 @@ describe("customer checkout server action core", () => {
     expect(malformedError.fieldErrors?.generalObservation).toContain(
       `Informe uma observação com até ${CHECKOUT_MAX_GENERAL_OBSERVATION_LENGTH} caracteres.`,
     );
-    expect(createCashOrder).not.toHaveBeenCalled();
+    expect(createCheckoutOrder).not.toHaveBeenCalled();
   });
 
   it("rejects forged root and item authority fields without echoing forged values or invoking the service", async () => {
-    const { core, createCashOrder } = authenticatedCore();
+    const { core, createCheckoutOrder } = authenticatedCore();
     const providerSecret = "provider-secret-token-123";
 
     const forged = await core.checkoutOrderAction(
@@ -285,7 +307,13 @@ describe("customer checkout server action core", () => {
           customerId: "forged-customer",
           publicCode: "PED-000001",
           provider: "forged-provider",
+          providerStatus: "APPROVED",
+          providerPaymentId: "pay_secret_123",
           providerPayload: providerSecret,
+          cardNumber: "4242424242424242",
+          cardCvv: "123",
+          cardExpiry: "12/99",
+          cardToken: "tok_secret_123",
           "items.0.price": "0.01",
           "items.0.subtotal": "0.01",
           "items.0.total": "0.01",
@@ -307,7 +335,13 @@ describe("customer checkout server action core", () => {
       "customerId",
       "publicCode",
       "provider",
+      "providerStatus",
+      "providerPaymentId",
       "providerPayload",
+      "cardNumber",
+      "cardCvv",
+      "cardExpiry",
+      "cardToken",
       "items.0.price",
       "items.0.subtotal",
       "items.0.total",
@@ -320,16 +354,19 @@ describe("customer checkout server action core", () => {
     const serialized = JSON.stringify(forgedError);
     expect(serialized).not.toContain(providerSecret);
     expect(serialized).not.toContain("forged-provider");
+    expect(serialized).not.toContain("pay_secret_123");
+    expect(serialized).not.toContain("4242424242424242");
+    expect(serialized).not.toContain("tok_secret_123");
     expect(serialized).not.toContain("forged-customer");
     expect(serialized).not.toContain("PED-000001");
     expect(serialized).not.toContain("DELIVERED");
     expect(serialized).not.toContain("PAID");
     expect(forged).not.toHaveProperty("payload");
-    expect(createCashOrder).not.toHaveBeenCalled();
+    expect(createCheckoutOrder).not.toHaveBeenCalled();
   });
 
   it("maps service validation failures to sanitized recoverable form and field errors", async () => {
-    const createCashOrder = vi.fn(async () => ({
+    const createCheckoutOrder = vi.fn(async () => ({
       ok: false,
       code: "PRODUCT_UNAVAILABLE",
       message: "raw Prisma product secret should not leak",
@@ -341,7 +378,7 @@ describe("customer checkout server action core", () => {
       retryable: false,
     }));
     const core = createCheckoutActionCore({
-      createCashOrder,
+      createCheckoutOrder,
       readSessionCookie: () => "customer-token",
       requireCustomerSession: async () => customerSession("customer-a"),
     });
@@ -368,7 +405,7 @@ describe("customer checkout server action core", () => {
     });
     const errorState = asCheckoutErrorState(state);
     expect(errorState.fieldErrors?.publicCode).toBeUndefined();
-    expect(createCashOrder).toHaveBeenCalledTimes(1);
+    expect(createCheckoutOrder).toHaveBeenCalledTimes(1);
 
     const serialized = JSON.stringify(state);
     for (const forbiddenFragment of [
@@ -384,7 +421,7 @@ describe("customer checkout server action core", () => {
 
   it("preserves recovery state for service exceptions and malformed service results", async () => {
     const rejectingCore = createCheckoutActionCore({
-      createCashOrder: vi.fn(async () => {
+      createCheckoutOrder: vi.fn(async () => {
         throw new Error("Prisma DATABASE_URL transaction timeout raw payload");
       }),
       readSessionCookie: () => "customer-token",
@@ -406,7 +443,7 @@ describe("customer checkout server action core", () => {
     expect(JSON.stringify(rejected)).not.toContain("raw payload");
 
     const malformedCore = createCheckoutActionCore({
-      createCashOrder: vi.fn(async () => ({
+      createCheckoutOrder: vi.fn(async () => ({
         ok: true,
         data: {
           publicCode: "internal-order-id",
@@ -557,7 +594,7 @@ describe("merchant order status transition server action core", () => {
         });
       },
     );
-    const revalidatePath = vi.fn(async (_path: string) => undefined);
+    const revalidatePath = vi.fn(async () => undefined);
     const core = createMerchantOrderTransitionActionCore({
       orderService: { transitionMerchantOrderStatusForOwner },
       readSessionCookie: () => "merchant-token",
@@ -810,7 +847,7 @@ describe("merchant order status transition server action core", () => {
       orderService: { transitionMerchantOrderStatusForOwner },
       readSessionCookie: () => "merchant-token",
       requireMerchantSession: async () => merchantSession("merchant-a"),
-      revalidatePath: vi.fn(async (_path: string) => undefined),
+      revalidatePath: vi.fn(async () => undefined),
     });
 
     const exactMax = await core.transitionMerchantOrderStatusAction(
@@ -955,10 +992,11 @@ describe("merchant order status transition server action core", () => {
     expect(JSON.stringify(state)).not.toContain("Next cache");
   });
 
-  it("keeps checkout exported while wiring the merchant transition action in actions.ts", () => {
+  it("keeps checkout exported while wiring the generic checkout and merchant transition actions in actions.ts", () => {
     const source = readFileSync(new URL("./actions.ts", import.meta.url), "utf8");
 
     expect(source).toContain("createCheckoutActionCore");
+    expect(source).toContain("createCheckoutOrder: orderService.createCheckoutOrder");
     expect(source).toContain("checkoutOrderAction");
     expect(source).toContain("createMerchantOrderTransitionActionCore");
     expect(source).toContain("transitionMerchantOrderStatusAction");
@@ -988,14 +1026,14 @@ function asCheckoutErrorState(state: CheckoutActionState): CheckoutErrorState {
 }
 
 function authenticatedCore() {
-  const createCashOrder = vi.fn(async () => createdOrderResult("PED-20260427-ABC123"));
+  const createCheckoutOrder = vi.fn(async () => createdOrderResult("PED-20260427-ABC123"));
   const core = createCheckoutActionCore({
-    createCashOrder,
+    createCheckoutOrder,
     readSessionCookie: () => "customer-token",
     requireCustomerSession: vi.fn(async () => customerSession("customer-a")),
   });
 
-  return { core, createCashOrder };
+  return { core, createCheckoutOrder };
 }
 
 function createdOrderResult(publicCode: string) {

@@ -16,7 +16,7 @@ import type {
 import { orderService } from "./service";
 
 const checkoutActionCore = createCheckoutActionCore({
-  createCashOrder: orderService.createCashOrder,
+  createCheckoutOrder: orderService.createCheckoutOrder,
   readSessionCookie: readSessionCookieValue,
   requireCustomerSession,
 });

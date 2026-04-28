@@ -6,6 +6,10 @@ const merchantOrderDetailPageSource = readFileSync(
   fileURLToPath(new URL("./page.tsx", import.meta.url)),
   "utf8",
 );
+const normalizedMerchantOrderDetailPageSource = merchantOrderDetailPageSource.replace(
+  /\r\n/g,
+  "\n",
+);
 const merchantOrderStatusActionsSource = readFileSync(
   fileURLToPath(new URL("./order-status-actions.tsx", import.meta.url)),
   "utf8",
@@ -79,7 +83,7 @@ describe("merchant order detail route source boundaries", () => {
     expect(merchantOrderDetailPageSource).toContain(
       "orderService.getMerchantOrderDetailForOwner",
     );
-    expect(merchantOrderDetailPageSource).toContain(
+    expect(normalizedMerchantOrderDetailPageSource).toContain(
       "orderService.getMerchantOrderDetailForOwner(\n      ownerId,\n      orderId,\n    )",
     );
     expect(merchantOrderDetailPageSource).toContain("auth.user.id");

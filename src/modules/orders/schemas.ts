@@ -3,10 +3,14 @@ import { z } from "zod";
 const REQUIRED_FIELD_MESSAGE = "Campo obrigatório.";
 const FORBIDDEN_FIELD_MESSAGE = "Campo não permitido.";
 const PAYMENT_METHOD_UNAVAILABLE_MESSAGE =
-  "Pague em dinheiro para concluir este pedido.";
+  "Escolha dinheiro, PIX ou cartão para concluir este pedido.";
 
 export const CHECKOUT_PAYMENT_METHODS = ["CASH", "PIX", "CARD"] as const;
-export const CHECKOUT_CONFIRMABLE_PAYMENT_METHODS = ["CASH"] as const;
+export const CHECKOUT_CONFIRMABLE_PAYMENT_METHODS = [
+  "CASH",
+  "PIX",
+  "CARD",
+] as const;
 
 export const CHECKOUT_MAX_ITEM_COUNT = 50;
 export const CHECKOUT_MAX_ITEM_QUANTITY = 99;
@@ -42,16 +46,16 @@ export const CHECKOUT_PAYMENT_OPTIONS = [
   {
     method: "PIX",
     label: "PIX",
-    description: "PIX online será habilitado em uma etapa futura.",
-    isConfirmable: false,
-    disabledReason: "PIX ainda não está disponível para concluir pedidos.",
+    description: "Pague via PIX online em modo fake/dev.",
+    isConfirmable: true,
+    disabledReason: null,
   },
   {
     method: "CARD",
     label: "Cartão",
-    description: "Cartão online será habilitado em uma etapa futura.",
-    isConfirmable: false,
-    disabledReason: "Cartão ainda não está disponível para concluir pedidos.",
+    description: "Pague com cartão online em modo fake/dev.",
+    isConfirmable: true,
+    disabledReason: null,
   },
 ] as const satisfies readonly CheckoutPaymentOption[];
 
