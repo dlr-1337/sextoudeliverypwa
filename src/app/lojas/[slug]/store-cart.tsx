@@ -320,6 +320,7 @@ export function StoreCart({ catalog }: StoreCartProps) {
           <div className="grid gap-4 md:grid-cols-2">
             {catalog.products.map((product) => (
               <ProductCard
+                canAddProduct={hasHydrated}
                 key={product.slug}
                 onAddProduct={handleAddProduct}
                 product={product}
@@ -442,10 +443,16 @@ export function StoreCart({ catalog }: StoreCartProps) {
 type ProductCardProps = {
   product: CatalogProductDto;
   quantityInCart: number;
+  canAddProduct: boolean;
   onAddProduct(product: CatalogProductDto): void;
 };
 
-function ProductCard({ product, quantityInCart, onAddProduct }: ProductCardProps) {
+function ProductCard({
+  product,
+  quantityInCart,
+  canAddProduct,
+  onAddProduct,
+}: ProductCardProps) {
   const imageUrl = getSafeLocalImageUrl(product.imageUrl);
 
   return (
@@ -488,11 +495,12 @@ function ProductCard({ product, quantityInCart, onAddProduct }: ProductCardProps
           </div>
           <button
             aria-label={`Adicionar ${product.name} ao carrinho`}
-            className="w-full rounded-full bg-orange-600 px-4 py-3 text-sm font-black text-white shadow-sm shadow-orange-950/10 transition hover:bg-orange-700 focus:outline-none focus:ring-4 focus:ring-orange-100"
+            className="w-full rounded-full bg-orange-600 px-4 py-3 text-sm font-black text-white shadow-sm shadow-orange-950/10 transition hover:bg-orange-700 focus:outline-none focus:ring-4 focus:ring-orange-100 disabled:cursor-not-allowed disabled:bg-orange-300 disabled:text-white/80"
+            disabled={!canAddProduct}
             onClick={() => onAddProduct(product)}
             type="button"
           >
-            Adicionar ao carrinho
+            {canAddProduct ? "Adicionar ao carrinho" : "Carregando carrinho..."}
           </button>
         </div>
       </div>

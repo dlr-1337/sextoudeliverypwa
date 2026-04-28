@@ -9,7 +9,9 @@ const readme = readFileSync("README.md", "utf8");
 const envExample = readFileSync(".env.example", "utf8");
 const gitignore = readFileSync(".gitignore", "utf8");
 const m002CoveragePath = "docs/m002-requirements-coverage.md";
+const m003CoveragePath = "docs/m003-requirements-coverage.md";
 const m002Coverage = readFileSync(m002CoveragePath, "utf8");
+const m003Coverage = readFileSync(m003CoveragePath, "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as PackageJson;
 
 const documentedPackageScripts = [
@@ -22,9 +24,12 @@ const documentedPackageScripts = [
   "smoke:m002",
   "e2e:m002",
   "verify:m002",
+  "smoke:m003",
+  "e2e:m003",
+  "verify:m003",
 ] as const;
 
-const activeM001M002EnvKeys = [
+const activeM001M002M003EnvKeys = [
   "NEXT_PUBLIC_APP_URL",
   "APP_ENV",
   "DATABASE_URL",
@@ -61,6 +66,8 @@ const importantRoutes = [
   "/admin/categorias",
   "/admin/clientes",
   "/estabelecimento",
+  "/estabelecimento/pedidos",
+  "/estabelecimento/pedidos/[id]",
   "/lojas",
   "/lojas/[slug]",
   "/checkout",
@@ -78,6 +85,15 @@ const deliveredM002Terms = [
   "npx playwright install chromium",
 ] as const;
 
+const deliveredM003Terms = [
+  "operação do pedido pelo estabelecimento",
+  "caixa de entrada de pedidos",
+  "Pedido aceito",
+  "Server Action",
+  "status stale",
+  "Chromium",
+] as const;
+
 const futureDeferralTerms = [
   "gateway real",
   "assinaturas",
@@ -87,9 +103,18 @@ const futureDeferralTerms = [
 
 const staleM001OnlyDeferralPatterns = [
   /Fora do M001[\s\S]{0,180}(?:carrinho|pedidos|checkout)/i,
-  /próximas entregas[\s\S]{0,180}(?:carrinho|pedidos|checkout)/i,
-  /ainda precisam definir[\s\S]{0,120}(?:carrinho|pedidos|checkout)/i,
+  /próximas entregas[\s\S]{0,180}(?:carrinho|checkout)/i,
+  /ainda precisam definir[\s\S]{0,120}(?:carrinho|checkout)/i,
   /R017[–-]R043 downstream/i,
+] as const;
+
+const staleM003DeferralPatterns = [
+  /Ainda não fazem parte[\s\S]{0,220}(?:transições operacionais do lojista|transições de status pelo estabelecimento)/i,
+  /Deferrals conhecidos[\s\S]{0,260}(?:transições operacionais do lojista|transições de status pelo estabelecimento)/i,
+  /próximas entregas[\s\S]{0,220}(?:transições operacionais do lojista|transições de status pelo estabelecimento)/i,
+  /later milestones still own merchant-side order transitions/i,
+  /Merchant status transitions remain owned by M003/i,
+  /Future merchant status operations remain/i,
 ] as const;
 
 const m002RequirementIds = [
@@ -103,6 +128,8 @@ const m002RequirementIds = [
   "R045",
   "R046",
 ] as const;
+
+const m003RequirementIds = ["R021", "R047", "R048", "R049", "R050", "R051"] as const;
 
 const forbiddenSecretPatterns = [
   {
@@ -161,7 +188,7 @@ function matrixRows(doc: string) {
 
 describe("setup documentation contract", () => {
   it("documents package scripts that exist in package.json", () => {
-    const documentationSurface = `${readme}\n${m002Coverage}`;
+    const documentationSurface = `${readme}\n${m002Coverage}\n${m003Coverage}`;
 
     for (const scriptName of documentedPackageScripts) {
       expect(packageJson.scripts[scriptName], `${scriptName} should exist`).toBeTypeOf(
@@ -176,7 +203,7 @@ describe("setup documentation contract", () => {
     expect(readme).toMatch(/upload local/i);
   });
 
-  it("documents M001+M002 routes and delivered money-flow scope", () => {
+  it("documents M001+M002+M003 routes and delivered money/order-operation scope", () => {
     for (const route of importantRoutes) {
       expect(readme).toContain(route);
     }
@@ -185,9 +212,14 @@ describe("setup documentation contract", () => {
       expect(readme).toContain(term);
     }
 
-    expect(readme).toMatch(/M001\+M002/i);
+    for (const term of deliveredM003Terms) {
+      expect(readme).toContain(term);
+    }
+
+    expect(readme).toMatch(/M001\+M002\+M003/i);
     expect(readme).toMatch(/PIX[\s\S]{0,120}cart[aã]o[\s\S]{0,160}indispon/i);
     expect(readme).toMatch(/n[aã]o (?:criam?|gera)[\s\S]{0,80}(?:fake|gateway)/i);
+    expect(readme).toMatch(/CUSTOMER[\s\S]{0,120}MERCHANT[\s\S]{0,120}Pedido aceito/i);
 
     for (const term of futureDeferralTerms) {
       expect(readme).toContain(term);
@@ -196,12 +228,16 @@ describe("setup documentation contract", () => {
     for (const pattern of staleM001OnlyDeferralPatterns) {
       expect(readme, `${pattern} should not appear`).not.toMatch(pattern);
     }
+
+    for (const pattern of staleM003DeferralPatterns) {
+      expect(readme, `${pattern} should not appear`).not.toMatch(pattern);
+    }
   });
 
-  it("keeps the env example complete and explicit about active M001/M002 versus future settings", () => {
+  it("keeps the env example complete and explicit about active M001/M002/M003 versus future settings", () => {
     const assignments = parseEnvAssignments(envExample);
 
-    for (const key of activeM001M002EnvKeys) {
+    for (const key of activeM001M002M003EnvKeys) {
       expect(assignments[key], `${key} should be present`).toBeTypeOf("string");
     }
 
@@ -209,9 +245,9 @@ describe("setup documentation contract", () => {
       expect(assignments[key], `${key} should be present`).toBeTypeOf("string");
     }
 
-    expect(envExample).toMatch(/ativo no M001 e M002/i);
-    expect(envExample).toMatch(/placeholder futuro; n[aã]o-runtime no M002/i);
-    expect(envExample).toMatch(/smoke:m002[\s\S]*e2e:m002[\s\S]*verify:m002/i);
+    expect(envExample).toMatch(/ativo no M001, M002 e M003/i);
+    expect(envExample).toMatch(/placeholder futuro; n[aã]o-runtime no M003/i);
+    expect(envExample).toMatch(/smoke:m002[\s\S]*smoke:m003[\s\S]*e2e:m002[\s\S]*e2e:m003[\s\S]*verify:m001[\s\S]*verify:m002[\s\S]*verify:m003/i);
     expect(envExample).toMatch(/AUTH_SECRET.*32 caracteres/is);
     expect(envExample).toMatch(/SESSION_MAX_AGE_DAYS.*1 e 365/is);
     expect(envExample).toMatch(/upsert de um ADMIN ativo/i);
@@ -247,6 +283,49 @@ describe("setup documentation contract", () => {
     expect(rows.find((row) => row.startsWith("| R021 |"))).toMatch(/M003/i);
   });
 
+  it("tracks M003 requirements coverage for merchant order operations", () => {
+    expect(existsSync(m003CoveragePath), `${m003CoveragePath} should exist`).toBe(true);
+    expect(readme).toContain(m003CoveragePath);
+    expect(m003Coverage).toMatch(/M003 Requirements Coverage Matrix/i);
+    expect(m003Coverage).toMatch(/Final assembly evidence/i);
+    expect(m003Coverage).toContain("npm run smoke:m003");
+    expect(m003Coverage).toContain("npm run e2e:m003");
+    expect(m003Coverage).toContain("npm run verify:m003");
+    expect(m003Coverage).toContain("scripts/verify-m003-order-operations.ts");
+    expect(m003Coverage).toContain("e2e/m003-order-operations.spec.ts");
+    expect(m003Coverage).toContain("e2e/m003-order-operations.e2e-helper.ts");
+    expect(m003Coverage).toContain("scripts/setup-contract-docs.test.ts");
+
+    const rows = matrixRows(m003Coverage);
+
+    expect(rows).toHaveLength(m003RequirementIds.length);
+
+    for (const id of m003RequirementIds) {
+      const matches = rows.filter((row) => row.startsWith(`| ${id} |`));
+
+      expect(matches, `${id} should appear exactly once`).toHaveLength(1);
+      expect(matches[0], `${id} should cite M003 runtime proof`).toMatch(/verify:m003/);
+    }
+
+    expect(rows.find((row) => row.startsWith("| R021 |"))).toMatch(/status/i);
+    expect(rows.find((row) => row.startsWith("| R047 |"))).toMatch(/establishment/i);
+    expect(rows.find((row) => row.startsWith("| R048 |"))).toMatch(/detail/i);
+    expect(rows.find((row) => row.startsWith("| R049 |"))).toMatch(/stale|wrong-owner/i);
+    expect(rows.find((row) => row.startsWith("| R050 |"))).toMatch(/public|públic/i);
+    expect(rows.find((row) => row.startsWith("| R051 |"))).toMatch(/final|verify:m003/i);
+  });
+
+  it("rejects stale merchant-transition deferrals across README and coverage docs", () => {
+    const docsToScan = `${readme}\n${m002Coverage}\n${m003Coverage}`;
+
+    expect(docsToScan).toContain("M003 validates merchant status transitions");
+    expect(docsToScan).toContain("M003-covered / validated");
+
+    for (const pattern of staleM003DeferralPatterns) {
+      expect(docsToScan, `${pattern} should not appear`).not.toMatch(pattern);
+    }
+  });
+
   it("ignores runtime uploads while keeping the env example trackable", () => {
     const ignoreLines = normalizedIgnoreLines();
 
@@ -256,7 +335,7 @@ describe("setup documentation contract", () => {
   });
 
   it("keeps documentation and examples free of obvious raw secret material", () => {
-    const docsToScan = `${readme}\n${envExample}\n${m002Coverage}`;
+    const docsToScan = `${readme}\n${envExample}\n${m002Coverage}\n${m003Coverage}`;
 
     for (const { label, pattern } of forbiddenSecretPatterns) {
       expect(docsToScan, `${label} should not be documented`).not.toMatch(pattern);

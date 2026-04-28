@@ -63,6 +63,24 @@ export const orderService: OrderServiceCore = {
   async getPublicOrderByCode(publicCodeInput) {
     return (await getOrderServiceCore()).getPublicOrderByCode(publicCodeInput);
   },
+  async listMerchantOrdersForOwner(ownerIdInput, input) {
+    return (await getOrderServiceCore()).listMerchantOrdersForOwner(
+      ownerIdInput,
+      input,
+    );
+  },
+  async getMerchantOrderDetailForOwner(ownerIdInput, orderIdInput) {
+    return (await getOrderServiceCore()).getMerchantOrderDetailForOwner(
+      ownerIdInput,
+      orderIdInput,
+    );
+  },
+  async transitionMerchantOrderStatusForOwner(ownerIdInput, input) {
+    return (await getOrderServiceCore()).transitionMerchantOrderStatusForOwner(
+      ownerIdInput,
+      input,
+    );
+  },
 };
 
 export type OrderService = typeof orderService;

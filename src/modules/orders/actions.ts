@@ -1,10 +1,18 @@
 "use server";
 
-import { readSessionCookieValue } from "../auth/cookies";
-import { requireCustomerSession } from "../auth/guards";
+import { revalidatePath } from "next/cache";
 
-import { createCheckoutActionCore } from "./action-core";
-import type { CheckoutActionState } from "./action-state";
+import { readSessionCookieValue } from "../auth/cookies";
+import { requireCustomerSession, requireMerchantSession } from "../auth/guards";
+
+import {
+  createCheckoutActionCore,
+  createMerchantOrderTransitionActionCore,
+} from "./action-core";
+import type {
+  CheckoutActionState,
+  MerchantOrderTransitionActionState,
+} from "./action-state";
 import { orderService } from "./service";
 
 const checkoutActionCore = createCheckoutActionCore({
@@ -13,9 +21,26 @@ const checkoutActionCore = createCheckoutActionCore({
   requireCustomerSession,
 });
 
+const merchantOrderTransitionActionCore = createMerchantOrderTransitionActionCore({
+  orderService,
+  readSessionCookie: readSessionCookieValue,
+  requireMerchantSession,
+  revalidatePath,
+});
+
 export async function checkoutOrderAction(
   previousState: CheckoutActionState,
   formData: FormData,
 ) {
   return checkoutActionCore.checkoutOrderAction(previousState, formData);
+}
+
+export async function transitionMerchantOrderStatusAction(
+  previousState: MerchantOrderTransitionActionState,
+  formData: FormData,
+) {
+  return merchantOrderTransitionActionCore.transitionMerchantOrderStatusAction(
+    previousState,
+    formData,
+  );
 }

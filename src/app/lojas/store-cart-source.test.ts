@@ -45,8 +45,11 @@ describe("public store cart client island", () => {
     }
   });
 
-  it("exposes a checkout CTA only for a hydrated current-store cart", () => {
+  it("exposes cart actions only after the client cart has hydrated", () => {
     expect(storeCartSource).toContain('import Link from "next/link";');
+    expect(storeCartSource).toContain("canAddProduct={hasHydrated}");
+    expect(storeCartSource).toContain("disabled={!canAddProduct}");
+    expect(storeCartSource).toContain('"Carregando carrinho..."');
     expect(storeCartSource).toContain("canCheckoutCurrentStoreCart");
     expect(storeCartSource).toContain(
       "hasHydrated && cart !== null && cart.store.establishmentId === catalog.id",

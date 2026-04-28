@@ -1,14 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const schema = readFileSync("prisma/schema.prisma", "utf8");
-const migrations = readdirSync("prisma/migrations", { withFileTypes: true })
+const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const migrationsRoot = projectPath("prisma", "migrations");
+
+function projectPath(...segments: string[]) {
+  return join(projectRoot, ...segments);
+}
+
+const schema = readFileSync(projectPath("prisma", "schema.prisma"), "utf8");
+const migrations = readdirSync(migrationsRoot, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => ({
     name: entry.name,
-    sql: readFileSync(join("prisma/migrations", entry.name, "migration.sql"), "utf8"),
+    sql: readFileSync(join(migrationsRoot, entry.name, "migration.sql"), "utf8"),
   }))
   .sort((left, right) => left.name.localeCompare(right.name));
 const migration = migrations.map(({ sql }) => sql).join("\n\n");
@@ -19,13 +27,32 @@ const logoUrlMigration = migrationByName("00000000000002_establishment_logo_url"
 const orderPaymentContractMigration = migrationByName(
   "00000000000003_order_payment_contract",
 );
-const dbClient = readFileSync("src/server/db.ts", "utf8");
-const prismaConfig = readFileSync("prisma.config.ts", "utf8");
-const generatedClient = readFileSync("src/generated/prisma/client.ts", "utf8");
-const generatedEnums = readFileSync("src/generated/prisma/enums.ts", "utf8");
-const generatedOrder = readFileSync("src/generated/prisma/models/Order.ts", "utf8");
-const generatedPayment = readFileSync("src/generated/prisma/models/Payment.ts", "utf8");
-const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
+const orderRejectedStatusMigration = migrationByName(
+  "00000000000004_order_rejected_status",
+);
+const dbClient = readFileSync(projectPath("src", "server", "db.ts"), "utf8");
+const prismaConfig = readFileSync(projectPath("prisma.config.ts"), "utf8");
+const generatedClient = readFileSync(
+  projectPath("src", "generated", "prisma", "client.ts"),
+  "utf8",
+);
+const generatedEnums = readFileSync(
+  projectPath("src", "generated", "prisma", "enums.ts"),
+  "utf8",
+);
+const generatedOrder = readFileSync(
+  projectPath("src", "generated", "prisma", "models", "Order.ts"),
+  "utf8",
+);
+const generatedPayment = readFileSync(
+  projectPath("src", "generated", "prisma", "models", "Payment.ts"),
+  "utf8",
+);
+const generatedClientClass = readFileSync(
+  projectPath("src", "generated", "prisma", "internal", "class.ts"),
+  "utf8",
+);
+const packageJson = JSON.parse(readFileSync(projectPath("package.json"), "utf8")) as {
   scripts: Record<string, string>;
 };
 
@@ -100,6 +127,7 @@ describe("Prisma database foundation contract", () => {
     );
     expect(migrationNames).toContain("00000000000002_establishment_logo_url");
     expect(migrationNames).toContain("00000000000003_order_payment_contract");
+    expect(migrationNames).toContain("00000000000004_order_rejected_status");
     expect(orderPaymentContractMigration).toContain(
       "-- S01 order/payment contract",
     );
@@ -146,6 +174,7 @@ describe("Prisma database foundation contract", () => {
       process.execPath,
       ["scripts/require-env.mjs", "DATABASE_URL"],
       {
+        cwd: projectRoot,
         encoding: "utf8",
         env: envWithoutDatabaseUrl(),
       },
@@ -221,6 +250,7 @@ describe("Prisma database foundation contract", () => {
       "READY_FOR_PICKUP",
       "OUT_FOR_DELIVERY",
       "DELIVERED",
+      "REJECTED",
       "CANCELED",
     ]);
     expect(enumValues("OrderStatus")).not.toContain("PLACED");
@@ -241,6 +271,11 @@ describe("Prisma database foundation contract", () => {
     expect(orderPaymentContractMigration).toContain(
       'ALTER TYPE "PaymentStatus" ADD VALUE IF NOT EXISTS \'MANUAL_CASH_ON_DELIVERY\';',
     );
+    expect(orderRejectedStatusMigration).toContain(
+      'ALTER TYPE "OrderStatus" ADD VALUE IF NOT EXISTS \'REJECTED\' AFTER \'DELIVERED\';',
+    );
+    expect(orderRejectedStatusMigration).not.toMatch(/DROP\s+TYPE\s+"OrderStatus"/i);
+    expect(orderRejectedStatusMigration).not.toMatch(/CREATE\s+TYPE\s+"OrderStatus"/i);
     expect(orderPaymentContractMigration).not.toMatch(/DROP\s+TYPE\s+"OrderStatus"/i);
     expect(orderPaymentContractMigration).not.toMatch(/DROP\s+TYPE\s+"PaymentMethod"/i);
     expect(orderPaymentContractMigration).not.toMatch(/DROP\s+TYPE\s+"PaymentStatus"/i);
@@ -339,11 +374,13 @@ describe("Prisma database foundation contract", () => {
   it("regenerates Prisma client exports for the order/payment contract", () => {
     for (const expected of [
       "PENDING: 'PENDING'",
+      "REJECTED: 'REJECTED'",
       "MANUAL_CASH_ON_DELIVERY: 'MANUAL_CASH_ON_DELIVERY'",
       "FAKE: 'FAKE'",
     ]) {
       expect(generatedEnums).toContain(expected);
     }
+    expect(generatedClientClass).toContain("REJECTED\\n  CANCELED");
     expect(generatedEnums).not.toContain("PLACED: 'PLACED'");
 
     for (const expected of [

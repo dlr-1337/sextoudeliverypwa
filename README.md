@@ -1,8 +1,8 @@
 # Sextou Delivery PWA
 
-Sextou Delivery é uma base Next.js para delivery local. Este guia é para uma pessoa engenheira interna ou agente que acabou de clonar o projeto e precisa levantar uma instância local segura, com banco PostgreSQL descartável, seed inicial e verificação M001+M002 reproduzível sem expor segredos.
+Sextou Delivery é uma base Next.js para delivery local. Este guia é para uma pessoa engenheira interna ou agente que acabou de clonar o projeto e precisa levantar uma instância local segura, com banco PostgreSQL descartável, seed inicial e verificação M001+M002+M003 reproduzível sem expor segredos.
 
-## O que M001+M002 entregam
+## O que M001+M002+M003 entregam
 
 O M001 entrega a fundação operacional do produto:
 
@@ -24,9 +24,18 @@ O M002 entrega o primeiro fluxo de compra em dinheiro:
 - `/pedido/[publicCode]` mostra confirmação/acompanhamento público com status, itens, totais, estabelecimento, pagamento em dinheiro e linha do tempo básica;
 - a prova final usa navegador real, servidor Next local e PostgreSQL descartável para validar catálogo ativo → carrinho → login CUSTOMER → checkout CASH → pedido real → acompanhamento público.
 
-Ainda não fazem parte do runtime entregue: gateway real de PIX/cartão, assinaturas/cobrança mensal, storage S3/R2/MinIO em produção, deploy/PWA final, métricas centralizadas, rate limiting avançado, transições operacionais do lojista para pedidos e integrações externas.
+O M003 entrega a operação do pedido pelo estabelecimento:
 
-Para revisar a cobertura requisito por requisito, consulte [`docs/m001-requirements-coverage.md`](docs/m001-requirements-coverage.md) para a fundação M001 e [`docs/m002-requirements-coverage.md`](docs/m002-requirements-coverage.md) para o fluxo M002.
+- merchant autenticado e aprovado acessa a caixa de entrada de pedidos próprios em `/estabelecimento/pedidos`;
+- o detalhe protegido em `/estabelecimento/pedidos/[id]` mostra dados operacionais suficientes para aceitar, preparar, entregar, recusar ou cancelar o pedido;
+- transições permitidas atualizam status, timestamps e histórico por Server Action, usando o status esperado para bloquear estados stale;
+- pedidos de outro estabelecimento, ids inválidos, status inválidos e lojas inativas recebem respostas seguras sem vazar existência, SQL, stacks ou campos de provider;
+- o tracking público em `/pedido/[publicCode]` reflete o status e o histórico atualizados pelo merchant sem expor dados privados do cliente, ids internos, segredos ou payloads de pagamento;
+- a prova final M003 encadeia source tests, PostgreSQL descartável, smoke de operação e Chromium para validar CUSTOMER cria pedido CASH → MERCHANT aceita → público vê “Pedido aceito”.
+
+Ainda não fazem parte do runtime entregue: gateway real de PIX/cartão, assinaturas/cobrança mensal, storage S3/R2/MinIO em produção, deploy/PWA final, métricas centralizadas, rate limiting avançado e integrações externas.
+
+Para revisar a cobertura requisito por requisito, consulte [`docs/m001-requirements-coverage.md`](docs/m001-requirements-coverage.md) para a fundação M001, [`docs/m002-requirements-coverage.md`](docs/m002-requirements-coverage.md) para o fluxo M002 e [`docs/m003-requirements-coverage.md`](docs/m003-requirements-coverage.md) para a operação merchant M003.
 
 ## Pré-requisitos
 
@@ -37,7 +46,7 @@ Para revisar a cobertura requisito por requisito, consulte [`docs/m001-requireme
 - Permissão de escrita no diretório local de uploads configurado.
 - Chromium do Playwright instalado quando for rodar o E2E de navegador.
 
-Nunca aponte os comandos de desenvolvimento ou verificação para um banco com dados reais de produção. Os smokes e E2E criam usuários, lojas, produtos, pedidos, pagamentos e sessões descartáveis.
+Nunca aponte os comandos de desenvolvimento ou verificação para um banco com dados reais de produção. Os smokes e E2E criam usuários, lojas, produtos, pedidos, pagamentos, históricos e sessões descartáveis.
 
 ## Configuração de ambiente
 
@@ -49,13 +58,13 @@ Nunca aponte os comandos de desenvolvimento ou verificação para um banco com d
 
 2. Copie `.env.example` para um arquivo `.env` local e não versionado.
 3. Substitua todos os placeholders de segredo por valores reais somente no `.env` local.
-4. Configure os grupos ativos no M001+M002:
+4. Configure os grupos ativos no M001+M002+M003:
    - aplicação: URL pública local e ambiente;
    - PostgreSQL: `DATABASE_URL` para comandos que tocam o banco;
    - autenticação e sessão: segredo, nome do cookie e expiração;
    - seed: credenciais iniciais do administrador local;
    - upload local: driver, pasta, URL pública e limite de bytes.
-5. Mantenha os grupos de S3/R2/MinIO e pagamentos fake/dev como placeholders não-runtime no M002. Eles não devem conter credenciais reais nem ser usados para PIX/cartão.
+5. Mantenha os grupos de S3/R2/MinIO e pagamentos fake/dev como placeholders não-runtime no M003. Eles não devem conter credenciais reais nem ser usados para PIX/cartão.
 
 `.env.example` é seguro para commit e deve continuar sem segredos reais. `.env` fica ignorado pelo git. Ao depurar, registre apenas nomes de variáveis ausentes; não imprima `DATABASE_URL`, senhas, tokens, hashes, segredos de sessão ou payloads de provider.
 
@@ -97,6 +106,8 @@ Rotas úteis:
 - `/admin/categorias` — gestão de categorias;
 - `/admin/clientes` — consulta administrativa de clientes;
 - `/estabelecimento` — painel privado do lojista;
+- `/estabelecimento/pedidos` — caixa de entrada protegida de pedidos próprios do lojista;
+- `/estabelecimento/pedidos/[id]` — detalhe operacional protegido para status, pagamento, itens, observações e histórico do pedido próprio;
 - `/lojas` — catálogo público de lojas ativas;
 - `/lojas/[slug]` — catálogo público de uma loja ativa, com carrinho local;
 - `/checkout` — revisão do carrinho, endereço e confirmação CASH para CUSTOMER autenticado;
@@ -106,7 +117,7 @@ Rotas úteis:
 
 ## Upload local
 
-O M001+M002 suporta apenas `UPLOAD_DRIVER="local"`. Os arquivos são gravados no diretório de runtime definido por `UPLOAD_DIR`, com padrão `./uploads`, e são servidos a partir de `UPLOAD_PUBLIC_BASE_URL`.
+O M001+M002+M003 suporta apenas `UPLOAD_DRIVER="local"`. Os arquivos são gravados no diretório de runtime definido por `UPLOAD_DIR`, com padrão `./uploads`, e são servidos a partir de `UPLOAD_PUBLIC_BASE_URL`.
 
 Regras importantes:
 
@@ -167,17 +178,47 @@ A prova M002 esperada confirma:
 - a página pública mostra status recebido, itens, totais e pagamento em dinheiro sem IDs internos, segredos, PIX copy-paste, metadados de cartão, payloads de provider ou stack traces;
 - asserções no PostgreSQL confirmam pedido `PENDING`, pagamento `MANUAL_CASH_ON_DELIVERY`, um item, totais recalculados e histórico inicial.
 
+## Verificação M003 com operação merchant e tracking público
+
+Use este fluxo quando precisar provar que a operação do pedido está integrada ao fluxo M002:
+
+```bash
+npm run db:generate
+npm run db:deploy
+npm run db:seed
+npm run smoke:m003
+npm run e2e:m003
+npm run verify:m003
+```
+
+`npm run smoke:m003` cria dados descartáveis no PostgreSQL, gera um pedido CASH, prova bloqueios de wrong-owner, status stale e transição inválida, aceita o pedido como merchant dono e consulta o tracking público por código. O resumo de console deve conter apenas código público, status, booleans e contagens.
+
+`npm run e2e:m003` abre Chromium pelo Playwright, usa contextos separados para CUSTOMER, MERCHANT e público anônimo, dirige o fluxo real de catálogo → checkout CASH → `/estabelecimento/pedidos` → `/estabelecimento/pedidos/[id]` → `/pedido/[publicCode]`, e confirma no banco que o status `ACCEPTED`, o histórico e os campos de pagamento permanecem coerentes.
+
+`npm run verify:m003` é o contrato completo e pesado para uso local/CI: `db:generate`, `npm test`, `lint`, `build`, `db:deploy`, `db:seed`, `smoke:m001`, `smoke:m002`, `smoke:m003`, `e2e:m002` e `e2e:m003`, nessa ordem. Ele não executa `migrate reset`, `db push`, truncate, drop database nem limpeza destrutiva.
+
+A prova M003 esperada confirma:
+
+- o CUSTOMER cria um pedido CASH real sem burlar carrinho, login ou Server Action;
+- o MERCHANT aprovado vê somente pedidos do próprio estabelecimento em `/estabelecimento/pedidos`;
+- o detalhe protegido usa o id interno apenas na rota privada e mostra o código público para operação humana;
+- a ação “Aceitar pedido” usa status esperado, grava histórico e define timestamp de aceite;
+- uma sessão pública nova em `/pedido/[publicCode]` mostra “Pedido aceito” e a nota pública do merchant;
+- dados privados de entrega, e-mails, telefones, ids internos, tokens, hashes, provider payloads, PIX/cartão, SQL e stacks não aparecem na superfície pública.
+
 ## Solução de problemas
 
-- **`DATABASE_URL` ausente**: preencha o `.env` local com um banco descartável. Comandos de migração, seed, smokes, `npm run verify:m001` e `npm run verify:m002` precisam de banco real.
+- **`DATABASE_URL` ausente**: preencha o `.env` local com um banco descartável. Comandos de migração, seed, smokes, `npm run verify:m001`, `npm run verify:m002` e `npm run verify:m003` precisam de banco real.
 - **Configuração de autenticação inválida**: use `AUTH_SECRET` aleatório com pelo menos 32 caracteres, `SESSION_COOKIE_NAME` compatível com cookie HTTP e `SESSION_MAX_AGE_DAYS` entre 1 e 365.
 - **Seed falhou**: confirme `SEED_ADMIN_NAME`, `SEED_ADMIN_EMAIL` e `SEED_ADMIN_PASSWORD`. O seed não cria credenciais padrão silenciosas.
-- **Chromium ausente no Playwright**: rode `npx playwright install chromium` e repita `npm run e2e:m002` ou `npm run verify:m002`.
+- **Chromium ausente no Playwright**: rode `npx playwright install chromium` e repita `npm run e2e:m002`, `npm run e2e:m003`, `npm run verify:m002` ou `npm run verify:m003`.
 - **Servidor Playwright não subiu**: confira se `NEXT_PUBLIC_APP_URL`/`PLAYWRIGHT_BASE_URL` apontam para a porta local esperada e se não há outro processo ocupando a porta.
+- **Pedido não apareceu para o merchant**: confirme que a loja do merchant está `ACTIVE`, que o pedido pertence ao mesmo estabelecimento e que o filtro de status em `/estabelecimento/pedidos` é válido.
+- **Atualização de status recusada**: recarregue o detalhe protegido; o servidor bloqueia status stale, transições inválidas e pedidos de outro estabelecimento sem revelar dados internos.
 - **Uploads indisponíveis**: confirme `UPLOAD_DRIVER="local"`, diretório com permissão de escrita, base pública coerente com `/uploads` e limite de bytes positivo.
-- **Build ou lint falhou**: corrija o erro local antes de rodar `npm run verify:m001` ou `npm run verify:m002` novamente.
+- **Build ou lint falhou**: corrija o erro local antes de rodar `npm run verify:m001`, `npm run verify:m002` ou `npm run verify:m003` novamente.
 - **Rota privada redirecionou para acesso negado**: entre com o perfil correto para a área desejada; os guards validam sessão e papel no servidor.
 
 ## Deferrals conhecidos
 
-As próximas entregas ainda precisam definir transições de status pelo estabelecimento, gateway real de PIX/cartão, assinaturas/cobrança mensal, armazenamento S3/R2/MinIO, deploy final/PWA instalável, observabilidade centralizada, limites/rate limiting e integrações externas. Até lá, mantenha placeholders futuros em `.env.example` e não conecte integrações reais sem novo contrato de ambiente e verificação.
+As próximas entregas ainda precisam definir gateway real de PIX/cartão, assinaturas/cobrança mensal, armazenamento S3/R2/MinIO, deploy final/PWA instalável, observabilidade centralizada, limites/rate limiting e integrações externas. Até lá, mantenha placeholders futuros em `.env.example` e não conecte integrações reais sem novo contrato de ambiente e verificação.

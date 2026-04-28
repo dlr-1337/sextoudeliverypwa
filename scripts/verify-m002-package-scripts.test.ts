@@ -114,7 +114,7 @@ describe("M002 package verification scripts", () => {
     const e2eScript = requirePackageScript("e2e:m002");
 
     expect(e2eScript).toBe(
-      `node scripts/require-env.mjs ${requiredE2EKeys.join(" ")} && playwright test`,
+      `node scripts/require-env.mjs ${requiredE2EKeys.join(" ")} && playwright test e2e/m002-money-flow.spec.ts`,
     );
   });
 

@@ -140,6 +140,7 @@ export default async function EstablishmentPage() {
         {dashboard ? (
           <section className="grid gap-5">
             <ReadOnlyEstablishmentCard establishment={dashboard.establishment} />
+            <OrdersShortcutPanel />
 
             {categoryOptions.errorMessage ? (
               <FeedbackState
@@ -316,6 +317,33 @@ function ReadOnlyEstablishmentCard({
             value={establishment.logoUrl ? "Logo cadastrado" : "Sem logo"}
           />
         </div>
+      </div>
+    </section>
+  );
+}
+
+function OrdersShortcutPanel() {
+  return (
+    <section className="rounded-[1.75rem] border border-amber-200/75 bg-amber-50/80 p-5 shadow-sm shadow-orange-950/5 backdrop-blur">
+      <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-amber-700">
+            Pedidos
+          </p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-orange-950">
+            Caixa de entrada da loja
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-700">
+            Acompanhe pedidos próprios em uma rota operacional separada para
+            manter este painel focado em perfil e cardápio.
+          </p>
+        </div>
+        <Link
+          className="inline-flex justify-center rounded-full bg-orange-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-orange-600/20 transition hover:bg-orange-700 focus:outline-none focus:ring-4 focus:ring-orange-100"
+          href="/estabelecimento/pedidos"
+        >
+          Ver pedidos
+        </Link>
       </div>
     </section>
   );

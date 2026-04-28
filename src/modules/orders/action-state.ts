@@ -1,4 +1,5 @@
 import type { CheckoutValidationErrors } from "./schemas";
+import type { OrderStatusValue } from "./service-core";
 
 export const CHECKOUT_ACTION_FIELD_NAMES = [
   "establishmentId",
@@ -67,3 +68,59 @@ export type CheckoutActionHandler = (
 export const CHECKOUT_ACTION_IDLE_STATE = {
   status: "idle",
 } as const satisfies CheckoutActionState;
+
+export const MERCHANT_ORDER_TRANSITION_ACTION_FIELD_NAMES = [
+  "orderId",
+  "expectedStatus",
+  "targetStatus",
+  "note",
+] as const;
+
+export type MerchantOrderTransitionActionFieldName =
+  (typeof MERCHANT_ORDER_TRANSITION_ACTION_FIELD_NAMES)[number];
+export type MerchantOrderTransitionActionValueFieldName = Extract<
+  MerchantOrderTransitionActionFieldName,
+  "targetStatus" | "note"
+>;
+export type MerchantOrderTransitionActionFieldErrors = Partial<
+  Record<MerchantOrderTransitionActionFieldName | string, string[]>
+>;
+export type MerchantOrderTransitionActionValues = Partial<
+  Record<MerchantOrderTransitionActionValueFieldName, string>
+>;
+
+export type MerchantOrderTransitionIdleActionState = {
+  status: "idle";
+};
+
+export type MerchantOrderTransitionErrorActionState = {
+  status: "error";
+  message: string;
+  fieldErrors?: MerchantOrderTransitionActionFieldErrors;
+  formErrors?: string[];
+  values?: MerchantOrderTransitionActionValues;
+};
+
+export type MerchantOrderTransitionSuccessActionState = {
+  status: "success";
+  message: string;
+  publicCode: string;
+  previousStatus: OrderStatusValue;
+  currentStatus: OrderStatusValue;
+  note: string | null;
+  changedAt: string;
+};
+
+export type MerchantOrderTransitionActionState =
+  | MerchantOrderTransitionIdleActionState
+  | MerchantOrderTransitionErrorActionState
+  | MerchantOrderTransitionSuccessActionState;
+
+export type MerchantOrderTransitionActionHandler = (
+  previousState: MerchantOrderTransitionActionState,
+  formData: FormData,
+) => Promise<MerchantOrderTransitionActionState>;
+
+export const MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE = {
+  status: "idle",
+} as const satisfies MerchantOrderTransitionActionState;

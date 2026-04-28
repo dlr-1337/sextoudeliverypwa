@@ -1,14 +1,31 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { AuthError } from "../auth/errors";
 import type { AuthSessionContext } from "../auth/types";
 
-import { CHECKOUT_ACTION_IDLE_STATE } from "./action-state";
-import { CHECKOUT_ACTION_MESSAGES, createCheckoutActionCore } from "./action-core";
+import {
+  CHECKOUT_ACTION_IDLE_STATE,
+  MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+  type CheckoutActionState,
+} from "./action-state";
+import {
+  CHECKOUT_ACTION_MESSAGES,
+  MERCHANT_ORDER_TRANSITION_ACTION_MESSAGES,
+  createCheckoutActionCore,
+  createMerchantOrderTransitionActionCore,
+} from "./action-core";
 import {
   CHECKOUT_MAX_DELIVERY_REFERENCE_LENGTH,
   CHECKOUT_MAX_GENERAL_OBSERVATION_LENGTH,
 } from "./schemas";
+import {
+  MERCHANT_ORDER_TRANSITION_ERROR_MESSAGES,
+  MERCHANT_ORDER_TRANSITION_NOTE_MAX_LENGTH,
+  type MerchantOrderTransitionFailureCode,
+  type OrderStatusValue,
+} from "./service-core";
 
 describe("customer checkout server action core", () => {
   it("rejects missing, wrong-role, and thrown guard failures before payload validation or order creation", async () => {
@@ -163,13 +180,13 @@ describe("customer checkout server action core", () => {
         checkoutForm({ fields: { paymentMethod } }),
       );
 
-      expect(state.status).toBe("error");
-      expect(state.fieldErrors?.paymentMethod).toContain(
+      const errorState = asCheckoutErrorState(state);
+      expect(errorState.fieldErrors?.paymentMethod).toContain(
         "Pague em dinheiro para concluir este pedido.",
       );
-      expect(state.formErrors).toEqual([]);
+      expect(errorState.formErrors).toEqual([]);
 
-      const serialized = JSON.stringify(state);
+      const serialized = JSON.stringify(errorState);
       expect(serialized).not.toContain("provider");
       expect(serialized).not.toContain("publicCode");
 
@@ -202,9 +219,9 @@ describe("customer checkout server action core", () => {
       checkoutForm({ items: [{ productId: "product-a", quantity: "abc" }] }),
     );
 
-    expect(invalidQuantity.status).toBe("error");
-    expect(invalidQuantity.fieldErrors?.["items.0.quantity"]).toBeDefined();
-    expect(invalidQuantity.values?.items).toEqual([
+    const invalidQuantityError = asCheckoutErrorState(invalidQuantity);
+    expect(invalidQuantityError.fieldErrors?.["items.0.quantity"]).toBeDefined();
+    expect(invalidQuantityError.values?.items).toEqual([
       { productId: "product-a", quantity: "abc" },
     ]);
 
@@ -213,8 +230,8 @@ describe("customer checkout server action core", () => {
       checkoutForm({ items: [] }),
     );
 
-    expect(emptyCart.status).toBe("error");
-    expect(emptyCart.fieldErrors?.items).toContain(
+    const emptyCartError = asCheckoutErrorState(emptyCart);
+    expect(emptyCartError.fieldErrors?.items).toContain(
       "Adicione pelo menos um item ao pedido.",
     );
     expect(createCashOrder).toHaveBeenCalledTimes(1);
@@ -238,14 +255,14 @@ describe("customer checkout server action core", () => {
       }),
     );
 
-    expect(malformed.status).toBe("error");
-    expect(malformed.fieldErrors?.establishmentId).toContain(
+    const malformedError = asCheckoutErrorState(malformed);
+    expect(malformedError.fieldErrors?.establishmentId).toContain(
       "Informe o identificador da loja.",
     );
-    expect(malformed.fieldErrors?.deliveryReference).toContain(
+    expect(malformedError.fieldErrors?.deliveryReference).toContain(
       `Informe uma referência com até ${CHECKOUT_MAX_DELIVERY_REFERENCE_LENGTH} caracteres.`,
     );
-    expect(malformed.fieldErrors?.generalObservation).toContain(
+    expect(malformedError.fieldErrors?.generalObservation).toContain(
       `Informe uma observação com até ${CHECKOUT_MAX_GENERAL_OBSERVATION_LENGTH} caracteres.`,
     );
     expect(createCashOrder).not.toHaveBeenCalled();
@@ -278,7 +295,7 @@ describe("customer checkout server action core", () => {
       }),
     );
 
-    expect(forged.status).toBe("error");
+    const forgedError = asCheckoutErrorState(forged);
 
     for (const field of [
       "price",
@@ -297,10 +314,10 @@ describe("customer checkout server action core", () => {
       "items.0.discount",
       "items.0.providerPayload",
     ]) {
-      expect(forged.fieldErrors?.[field]).toContain("Campo não permitido.");
+      expect(forgedError.fieldErrors?.[field]).toContain("Campo não permitido.");
     }
 
-    const serialized = JSON.stringify(forged);
+    const serialized = JSON.stringify(forgedError);
     expect(serialized).not.toContain(providerSecret);
     expect(serialized).not.toContain("forged-provider");
     expect(serialized).not.toContain("forged-customer");
@@ -349,7 +366,8 @@ describe("customer checkout server action core", () => {
         items: [{ productId: "product-a", quantity: "2" }],
       },
     });
-    expect(state.fieldErrors?.publicCode).toBeUndefined();
+    const errorState = asCheckoutErrorState(state);
+    expect(errorState.fieldErrors?.publicCode).toBeUndefined();
     expect(createCashOrder).toHaveBeenCalledTimes(1);
 
     const serialized = JSON.stringify(state);
@@ -418,6 +436,537 @@ describe("customer checkout server action core", () => {
   });
 });
 
+describe("merchant order status transition server action core", () => {
+  it("rejects missing, wrong-role, and thrown guard failures before service or revalidation", async () => {
+    const missingService = vi.fn();
+    const missingGuard = vi.fn(async (rawToken: unknown) => {
+      expect(rawToken).toBeUndefined();
+      throw new AuthError("TOKEN_INVALID", "raw merchant session token missing");
+    });
+    const missingCore = createMerchantOrderTransitionActionCore({
+      orderService: {
+        transitionMerchantOrderStatusForOwner: missingService,
+      },
+      readSessionCookie: () => undefined,
+      requireMerchantSession: missingGuard,
+      revalidatePath: vi.fn(),
+    });
+
+    const missing = await missingCore.transitionMerchantOrderStatusAction(
+      MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+      merchantTransitionForm(),
+    );
+
+    expect(missing).toMatchObject({
+      status: "error",
+      message: "Sessão inválida. Faça login novamente.",
+    });
+    expect(JSON.stringify(missing)).not.toContain("session token");
+    expect(missingService).not.toHaveBeenCalled();
+
+    for (const role of ["ADMIN", "CUSTOMER"] as const) {
+      const service = vi.fn();
+      const revalidatePath = vi.fn();
+      const roleCore = createMerchantOrderTransitionActionCore({
+        orderService: {
+          transitionMerchantOrderStatusForOwner: service,
+        },
+        readSessionCookie: () => `${role.toLowerCase()}-token`,
+        requireMerchantSession: vi.fn(async (rawToken: unknown) => {
+          expect(rawToken).toBe(`${role.toLowerCase()}-token`);
+          throw new AuthError(
+            "FORBIDDEN_ROLE",
+            `Role ${role} cannot access merchant transitions.`,
+          );
+        }),
+        revalidatePath,
+      });
+
+      const forbidden = await roleCore.transitionMerchantOrderStatusAction(
+        MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+        merchantTransitionForm(),
+      );
+
+      expect(forbidden).toMatchObject({
+        status: "error",
+        message: "Você não tem permissão para acessar esta área.",
+      });
+      expect(JSON.stringify(forbidden)).not.toContain(role);
+      expect(service).not.toHaveBeenCalled();
+      expect(revalidatePath).not.toHaveBeenCalled();
+    }
+
+    const thrownService = vi.fn();
+    const thrownCore = createMerchantOrderTransitionActionCore({
+      orderService: {
+        transitionMerchantOrderStatusForOwner: thrownService,
+      },
+      readSessionCookie: () => "merchant-token",
+      requireMerchantSession: async () => {
+        throw new Error("AUTH_SECRET tokenHash stack raw merchant token");
+      },
+      revalidatePath: vi.fn(),
+    });
+
+    const thrown = await thrownCore.transitionMerchantOrderStatusAction(
+      MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+      merchantTransitionForm(),
+    );
+
+    expect(thrown).toMatchObject({
+      status: "error",
+      message: "Configuração de autenticação indisponível. Contate o suporte.",
+    });
+    const serializedThrown = JSON.stringify(thrown);
+    expect(serializedThrown).not.toContain("AUTH_SECRET");
+    expect(serializedThrown).not.toContain("tokenHash");
+    expect(serializedThrown).not.toContain("merchant token");
+    expect(thrownService).not.toHaveBeenCalled();
+  });
+
+  it("delegates an allowlisted payload and revalidates exact merchant and public paths on success", async () => {
+    const orderId = "order/with space";
+    const servicePublicCode = "PED-20260427-SERVICE1";
+    const forgedPublicCode = "PED-20260427-FORGED1";
+    const changedAt = new Date("2026-04-27T16:30:00.000Z");
+    const transitionMerchantOrderStatusForOwner = vi.fn(
+      async (ownerId: string, input: unknown) => {
+        expect(ownerId).toBe("merchant-a");
+        expect(input).toEqual({
+          orderId,
+          expectedStatus: "PENDING",
+          targetStatus: "ACCEPTED",
+          note: "Confirmar pedido",
+        });
+        expect(input).not.toHaveProperty("ownerId");
+        expect(input).not.toHaveProperty("establishmentId");
+        expect(input).not.toHaveProperty("changedById");
+        expect(input).not.toHaveProperty("acceptedAt");
+        expect(input).not.toHaveProperty("status");
+        expect(input).not.toHaveProperty("publicCode");
+
+        return merchantTransitionSuccess({
+          publicCode: servicePublicCode,
+          previousStatus: "PENDING",
+          status: "ACCEPTED",
+          note: "Confirmar pedido",
+          changedAt,
+          id: "internal-order-id",
+          ownerId: "merchant-a",
+          publicCodeFromBrowser: forgedPublicCode,
+        });
+      },
+    );
+    const revalidatePath = vi.fn(async (_path: string) => undefined);
+    const core = createMerchantOrderTransitionActionCore({
+      orderService: { transitionMerchantOrderStatusForOwner },
+      readSessionCookie: () => "merchant-token",
+      requireMerchantSession: async () => merchantSession("merchant-a"),
+      revalidatePath,
+    });
+
+    const state = await core.transitionMerchantOrderStatusAction(
+      MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+      merchantTransitionForm({
+        fields: {
+          orderId,
+          expectedStatus: "PENDING",
+          targetStatus: "ACCEPTED",
+          note: "Confirmar pedido",
+        },
+        extra: {
+          ownerId: "forged-owner",
+          establishmentId: "forged-establishment",
+          changedById: "forged-user",
+          acceptedAt: "1999-01-01T00:00:00.000Z",
+          updatedAt: "1999-01-01T00:00:00.000Z",
+          status: "DELIVERED",
+          publicCode: forgedPublicCode,
+        },
+      }),
+    );
+
+    expect(state).toEqual({
+      status: "success",
+      message: MERCHANT_ORDER_TRANSITION_ACTION_MESSAGES.SUCCESS,
+      publicCode: servicePublicCode,
+      previousStatus: "PENDING",
+      currentStatus: "ACCEPTED",
+      note: "Confirmar pedido",
+      changedAt: changedAt.toISOString(),
+    });
+    expect(revalidatePath.mock.calls.map(([path]) => path)).toEqual([
+      "/estabelecimento",
+      "/estabelecimento/pedidos",
+      `/estabelecimento/pedidos/${encodeURIComponent(orderId)}`,
+      `/pedido/${encodeURIComponent(servicePublicCode)}`,
+    ]);
+
+    const serialized = JSON.stringify(state);
+    for (const forbiddenFragment of [
+      "internal-order-id",
+      "merchant-a",
+      "forged-owner",
+      "forged-establishment",
+      "forged-user",
+      forgedPublicCode,
+      orderId,
+    ]) {
+      expect(serialized).not.toContain(forbiddenFragment);
+    }
+  });
+
+  it("maps typed S03 transition failures to safe action errors without revalidation or raw service echoes", async () => {
+    const failureCodes = [
+      "STALE_STATUS",
+      "ORDER_NOT_FOUND",
+      "INVALID_TRANSITION",
+      "DATABASE_ERROR",
+    ] as const satisfies readonly MerchantOrderTransitionFailureCode[];
+
+    for (const code of failureCodes) {
+      const transitionMerchantOrderStatusForOwner = vi.fn(async () => ({
+        ...merchantTransitionFailure(code),
+        message: `Prisma DATABASE_URL raw ${code} internal-order-id`,
+        formErrors: ["provider payload should stay private"],
+        ownerId: "merchant-secret",
+        publicCode: "PED-20260427-SECRET1",
+      }));
+      const revalidatePath = vi.fn();
+      const core = createMerchantOrderTransitionActionCore({
+        orderService: { transitionMerchantOrderStatusForOwner },
+        readSessionCookie: () => "merchant-token",
+        requireMerchantSession: async () => merchantSession("merchant-a"),
+        revalidatePath,
+      });
+
+      const state = await core.transitionMerchantOrderStatusAction(
+        MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+        merchantTransitionForm({
+          fields: {
+            targetStatus: "ACCEPTED",
+            note: "Confirmar pedido",
+          },
+        }),
+      );
+      const safeMessage = MERCHANT_ORDER_TRANSITION_ERROR_MESSAGES[code];
+
+      expect(state).toMatchObject({
+        status: "error",
+        message: safeMessage,
+        formErrors: [safeMessage],
+        values: {
+          targetStatus: "ACCEPTED",
+          note: "Confirmar pedido",
+        },
+      });
+      expect(revalidatePath).not.toHaveBeenCalled();
+
+      const serialized = JSON.stringify(state);
+      for (const forbiddenFragment of [
+        "Prisma",
+        "DATABASE_URL",
+        "provider payload",
+        "merchant-secret",
+        "internal-order-id",
+        "PED-20260427-SECRET1",
+        code,
+      ]) {
+        expect(serialized).not.toContain(forbiddenFragment);
+      }
+    }
+  });
+
+  it("does not trust malformed form values or forged browser fields and preserves only safe recovery values", async () => {
+    const oversizedNote = "x".repeat(MERCHANT_ORDER_TRANSITION_NOTE_MAX_LENGTH + 1);
+    const malformedService = vi.fn(async (_ownerId: string, input: unknown) => {
+      expect(input).toEqual({
+        orderId: " ",
+        expectedStatus: "BOGUS_STATUS",
+        targetStatus: "DROP_TABLE",
+        note: oversizedNote,
+      });
+      expect(input).not.toHaveProperty("ownerId");
+      expect(input).not.toHaveProperty("establishmentId");
+      expect(input).not.toHaveProperty("publicCode");
+
+      return merchantTransitionFailure("INVALID_NOTE");
+    });
+    const malformedCore = createMerchantOrderTransitionActionCore({
+      orderService: {
+        transitionMerchantOrderStatusForOwner: malformedService,
+      },
+      readSessionCookie: () => "merchant-token",
+      requireMerchantSession: async () => merchantSession("merchant-a"),
+      revalidatePath: vi.fn(),
+    });
+
+    const malformed = await malformedCore.transitionMerchantOrderStatusAction(
+      MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+      merchantTransitionForm({
+        fields: {
+          orderId: " ",
+          expectedStatus: "BOGUS_STATUS",
+          targetStatus: "DROP_TABLE",
+          note: oversizedNote,
+        },
+        extra: {
+          ownerId: "forged-owner",
+          establishmentId: "forged-establishment",
+          publicCode: "PED-20260427-FORGED1",
+        },
+      }),
+    );
+
+    expect(malformed).toMatchObject({
+      status: "error",
+      message: MERCHANT_ORDER_TRANSITION_ERROR_MESSAGES.INVALID_NOTE,
+      fieldErrors: {
+        note: [MERCHANT_ORDER_TRANSITION_ERROR_MESSAGES.INVALID_NOTE],
+      },
+      values: {
+        targetStatus: "",
+        note: "",
+      },
+    });
+    expect(JSON.stringify(malformed)).not.toContain("DROP_TABLE");
+    expect(JSON.stringify(malformed)).not.toContain(oversizedNote);
+
+    const missingService = vi.fn(async (_ownerId: string, input: unknown) => {
+      expect(input).toEqual({
+        orderId: "",
+        expectedStatus: "PENDING",
+        targetStatus: "ACCEPTED",
+        note: "",
+      });
+
+      return merchantTransitionFailure("INVALID_ORDER");
+    });
+    const missingCore = createMerchantOrderTransitionActionCore({
+      orderService: {
+        transitionMerchantOrderStatusForOwner: missingService,
+      },
+      readSessionCookie: () => "merchant-token",
+      requireMerchantSession: async () => merchantSession("merchant-a"),
+      revalidatePath: vi.fn(),
+    });
+    const missingOrderForm = new FormData();
+    missingOrderForm.set("expectedStatus", "PENDING");
+    missingOrderForm.set("targetStatus", "ACCEPTED");
+
+    const missing = await missingCore.transitionMerchantOrderStatusAction(
+      MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+      missingOrderForm,
+    );
+
+    expect(missing).toMatchObject({
+      status: "error",
+      message: MERCHANT_ORDER_TRANSITION_ERROR_MESSAGES.INVALID_ORDER,
+    });
+
+    const blobService = vi.fn(async (_ownerId: string, input: unknown) => {
+      expect(input).toEqual({
+        orderId: "order-a",
+        expectedStatus: "PENDING",
+        targetStatus: "ACCEPTED",
+        note: "",
+      });
+
+      return merchantTransitionFailure("INVALID_NOTE");
+    });
+    const blobCore = createMerchantOrderTransitionActionCore({
+      orderService: {
+        transitionMerchantOrderStatusForOwner: blobService,
+      },
+      readSessionCookie: () => "merchant-token",
+      requireMerchantSession: async () => merchantSession("merchant-a"),
+      revalidatePath: vi.fn(),
+    });
+    const blobForm = merchantTransitionForm();
+    blobForm.set("note", new Blob(["raw-binary-secret"]));
+
+    const blobState = await blobCore.transitionMerchantOrderStatusAction(
+      MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+      blobForm,
+    );
+
+    expect(blobState).toMatchObject({
+      status: "error",
+      message: MERCHANT_ORDER_TRANSITION_ERROR_MESSAGES.INVALID_NOTE,
+      values: {
+        targetStatus: "ACCEPTED",
+        note: "",
+      },
+    });
+    expect(JSON.stringify(blobState)).not.toContain("raw-binary-secret");
+  });
+
+  it("accepts exact max-length and blank notes through the service boundary", async () => {
+    const exactMaxNote = "x".repeat(MERCHANT_ORDER_TRANSITION_NOTE_MAX_LENGTH);
+    const transitionMerchantOrderStatusForOwner = vi.fn(async () =>
+      merchantTransitionSuccess({ note: exactMaxNote }),
+    );
+    const core = createMerchantOrderTransitionActionCore({
+      orderService: { transitionMerchantOrderStatusForOwner },
+      readSessionCookie: () => "merchant-token",
+      requireMerchantSession: async () => merchantSession("merchant-a"),
+      revalidatePath: vi.fn(async (_path: string) => undefined),
+    });
+
+    const exactMax = await core.transitionMerchantOrderStatusAction(
+      MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+      merchantTransitionForm({ fields: { note: exactMaxNote } }),
+    );
+
+    expect(exactMax.status).toBe("success");
+    expect(transitionMerchantOrderStatusForOwner).toHaveBeenLastCalledWith(
+      "merchant-a",
+      expect.objectContaining({ note: exactMaxNote }),
+    );
+
+    const blank = await core.transitionMerchantOrderStatusAction(
+      MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+      merchantTransitionForm({ fields: { note: "   " } }),
+    );
+
+    expect(blank.status).toBe("success");
+    expect(transitionMerchantOrderStatusForOwner).toHaveBeenLastCalledWith(
+      "merchant-a",
+      expect.objectContaining({ note: "   " }),
+    );
+  });
+
+  it("collapses thrown or malformed service results to a generic retryable message", async () => {
+    const rejectingCore = createMerchantOrderTransitionActionCore({
+      orderService: {
+        transitionMerchantOrderStatusForOwner: vi.fn(async () => {
+          throw new Error("Prisma DATABASE_URL transaction timeout raw payload");
+        }),
+      },
+      readSessionCookie: () => "merchant-token",
+      requireMerchantSession: async () => merchantSession("merchant-a"),
+      revalidatePath: vi.fn(),
+    });
+
+    const rejected = await rejectingCore.transitionMerchantOrderStatusAction(
+      MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+      merchantTransitionForm(),
+    );
+
+    expect(rejected).toMatchObject({
+      status: "error",
+      message: MERCHANT_ORDER_TRANSITION_ACTION_MESSAGES.GENERIC_FAILURE,
+      formErrors: [MERCHANT_ORDER_TRANSITION_ACTION_MESSAGES.GENERIC_FAILURE],
+      values: {
+        targetStatus: "ACCEPTED",
+        note: "Confirmar pedido",
+      },
+    });
+    expect(JSON.stringify(rejected)).not.toContain("DATABASE_URL");
+    expect(JSON.stringify(rejected)).not.toContain("raw payload");
+
+    for (const malformedResult of [
+      {
+        ok: true,
+        data: {
+          publicCode: "internal-order-id",
+          previousStatus: "PENDING",
+          status: "ACCEPTED",
+          changedAt: new Date("2026-04-27T16:30:00.000Z"),
+          providerPayload: "secret-provider-payload",
+        },
+      },
+      {
+        ok: false,
+        code: "SECRET_INTERNAL_CODE",
+        message: "Prisma stack should not leak",
+        ownerId: "merchant-secret",
+      },
+    ]) {
+      const revalidatePath = vi.fn();
+      const malformedCore = createMerchantOrderTransitionActionCore({
+        orderService: {
+          transitionMerchantOrderStatusForOwner: vi.fn(async () => malformedResult),
+        },
+        readSessionCookie: () => "merchant-token",
+        requireMerchantSession: async () => merchantSession("merchant-a"),
+        revalidatePath,
+      });
+
+      const malformed = await malformedCore.transitionMerchantOrderStatusAction(
+        MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+        merchantTransitionForm(),
+      );
+
+      expect(malformed).toMatchObject({
+        status: "error",
+        message: MERCHANT_ORDER_TRANSITION_ACTION_MESSAGES.GENERIC_FAILURE,
+      });
+      expect(revalidatePath).not.toHaveBeenCalled();
+
+      const serializedMalformed = JSON.stringify(malformed);
+      for (const forbiddenFragment of [
+        "internal-order-id",
+        "secret-provider-payload",
+        "SECRET_INTERNAL_CODE",
+        "Prisma stack",
+        "merchant-secret",
+      ]) {
+        expect(serializedMalformed).not.toContain(forbiddenFragment);
+      }
+    }
+  });
+
+  it("returns safe refresh guidance when revalidation throws after the mutation succeeds", async () => {
+    const servicePublicCode = "PED-20260427-SERVICE1";
+    const revalidatePath = vi.fn(async (path: string) => {
+      if (path === "/estabelecimento/pedidos") {
+        throw new Error("Next cache DATABASE_URL internals");
+      }
+    });
+    const core = createMerchantOrderTransitionActionCore({
+      orderService: {
+        transitionMerchantOrderStatusForOwner: vi.fn(async () =>
+          merchantTransitionSuccess({ publicCode: servicePublicCode }),
+        ),
+      },
+      readSessionCookie: () => "merchant-token",
+      requireMerchantSession: async () => merchantSession("merchant-a"),
+      revalidatePath,
+    });
+
+    const state = await core.transitionMerchantOrderStatusAction(
+      MERCHANT_ORDER_TRANSITION_ACTION_IDLE_STATE,
+      merchantTransitionForm({ fields: { orderId: "order-a" } }),
+    );
+
+    expect(state).toMatchObject({
+      status: "success",
+      message: MERCHANT_ORDER_TRANSITION_ACTION_MESSAGES.REVALIDATION_FAILURE,
+      publicCode: servicePublicCode,
+    });
+    expect(revalidatePath.mock.calls.map(([path]) => path)).toEqual([
+      "/estabelecimento",
+      "/estabelecimento/pedidos",
+      "/estabelecimento/pedidos/order-a",
+      `/pedido/${servicePublicCode}`,
+    ]);
+    expect(JSON.stringify(state)).not.toContain("DATABASE_URL");
+    expect(JSON.stringify(state)).not.toContain("Next cache");
+  });
+
+  it("keeps checkout exported while wiring the merchant transition action in actions.ts", () => {
+    const source = readFileSync(new URL("./actions.ts", import.meta.url), "utf8");
+
+    expect(source).toContain("createCheckoutActionCore");
+    expect(source).toContain("checkoutOrderAction");
+    expect(source).toContain("createMerchantOrderTransitionActionCore");
+    expect(source).toContain("transitionMerchantOrderStatusAction");
+    expect(source).toContain("requireMerchantSession");
+    expect(source).toContain("revalidatePath");
+  });
+});
+
 type CheckoutFormOptions = {
   fields?: Partial<Record<CheckoutRootFieldName, string>>;
   items?: Array<Partial<Record<CheckoutItemFieldName, string>>>;
@@ -426,6 +975,17 @@ type CheckoutFormOptions = {
 
 type CheckoutRootFieldName = keyof ReturnType<typeof validCheckoutFields>;
 type CheckoutItemFieldName = "productId" | "quantity";
+type CheckoutErrorState = Extract<CheckoutActionState, { status: "error" }>;
+
+function asCheckoutErrorState(state: CheckoutActionState): CheckoutErrorState {
+  expect(state.status).toBe("error");
+
+  if (state.status !== "error") {
+    throw new Error("Expected checkout action error state.");
+  }
+
+  return state;
+}
 
 function authenticatedCore() {
   const createCashOrder = vi.fn(async () => createdOrderResult("PED-20260427-ABC123"));
@@ -516,6 +1076,103 @@ function customerSession(id: string): AuthSessionContext {
       role: "CUSTOMER",
       status: "ACTIVE",
       phone: "11999999999",
+    },
+  };
+}
+
+type MerchantTransitionFormOptions = {
+  fields?: Partial<Record<MerchantTransitionFieldName, string>>;
+  extra?: Record<string, string>;
+};
+
+type MerchantTransitionFieldName =
+  | "orderId"
+  | "expectedStatus"
+  | "targetStatus"
+  | "note";
+
+type MerchantTransitionSuccessOverrides = Partial<{
+  publicCode: string;
+  previousStatus: OrderStatusValue;
+  status: OrderStatusValue;
+  note: string | null;
+  changedAt: Date;
+}> &
+  Record<string, unknown>;
+
+function merchantTransitionForm(options: MerchantTransitionFormOptions = {}) {
+  const formData = new FormData();
+  const fields = {
+    orderId: "order-a",
+    expectedStatus: "PENDING",
+    targetStatus: "ACCEPTED",
+    note: "Confirmar pedido",
+    ...(options.fields ?? {}),
+  };
+
+  for (const [key, value] of Object.entries(fields)) {
+    formData.set(key, value);
+  }
+
+  for (const [key, value] of Object.entries(options.extra ?? {})) {
+    formData.set(key, value);
+  }
+
+  return formData;
+}
+
+function merchantTransitionSuccess(
+  overrides: MerchantTransitionSuccessOverrides = {},
+) {
+  const changedAt =
+    overrides.changedAt ?? new Date("2026-04-27T16:30:00.000Z");
+
+  return {
+    ok: true,
+    data: {
+      publicCode: "PED-20260427-SERVICE1",
+      previousStatus: "PENDING",
+      status: "ACCEPTED",
+      placedAt: new Date("2026-04-27T15:00:00.000Z"),
+      acceptedAt: changedAt,
+      deliveredAt: null,
+      canceledAt: null,
+      updatedAt: changedAt,
+      note: "Confirmar pedido",
+      changedAt,
+      ...overrides,
+    },
+  } as const;
+}
+
+function merchantTransitionFailure(code: MerchantOrderTransitionFailureCode) {
+  return {
+    ok: false,
+    code,
+    message: MERCHANT_ORDER_TRANSITION_ERROR_MESSAGES[code],
+    retryable: code === "DATABASE_ERROR",
+  } as const;
+}
+
+function merchantSession(id: string): AuthSessionContext {
+  const now = new Date("2026-04-27T12:00:00.000Z");
+
+  return {
+    session: {
+      id: `session-${id}`,
+      userId: id,
+      expiresAt: new Date("2026-04-28T12:00:00.000Z"),
+      lastUsedAt: now,
+      revokedAt: null,
+      createdAt: now,
+    },
+    user: {
+      id,
+      name: "Mercado Sextou",
+      email: "merchant@example.com",
+      role: "MERCHANT",
+      status: "ACTIVE",
+      phone: "11988887777",
     },
   };
 }

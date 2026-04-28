@@ -8,12 +8,13 @@ const orderTrackingPageSource = readFileSync(
 const checkoutPageSource = readFileSync("src/app/checkout/page.tsx", "utf8");
 
 const forbiddenRouteImports = [
-  { label: "auth modules", pattern: /@\/modules\/auth/u },
+  { label: "auth modules", pattern: /@\/modules\/(auth|merchant\/auth)/u },
   { label: "database module", pattern: /@\/server\/db/u },
   { label: "Prisma runtime", pattern: /@prisma|Prisma/u },
   { label: "Next headers", pattern: /next\/headers/u },
   { label: "cookies", pattern: /cookies\(/u },
   { label: "notFound helper", pattern: /notFound\(/u },
+  { label: "Server Action directive", pattern: /["']use server["']/u },
 ] as const;
 
 const forbiddenPrivateFragments = [
@@ -44,11 +45,28 @@ describe("public order tracking route source boundaries", () => {
     expect(orderTrackingPageSource).toContain("export const metadata");
     expect(orderTrackingPageSource).toContain("params: Promise<{");
     expect(orderTrackingPageSource).toContain("publicCode: string");
-    expect(orderTrackingPageSource).toContain("orderService.getPublicOrderByCode(publicCode)");
+    expect(orderTrackingPageSource).toContain(
+      "orderService.getPublicOrderByCode(publicCode)",
+    );
     expect(orderTrackingPageSource).toContain("loadPublicOrder(publicCode)");
 
     for (const { label, pattern } of forbiddenRouteImports) {
       expect(orderTrackingPageSource, label).not.toMatch(pattern);
+    }
+
+    for (const forbiddenFragment of [
+      "requireMerchantPageSession",
+      "requireMerchantSession",
+      "requireCustomerSession",
+      "readSessionCookie",
+      "transitionMerchantOrderStatusAction",
+      "useActionState",
+      "useFormStatus",
+      "revalidatePath",
+      "router.refresh()",
+      "<form",
+    ]) {
+      expect(orderTrackingPageSource).not.toContain(forbiddenFragment);
     }
   });
 
@@ -96,6 +114,25 @@ describe("public order tracking route source boundaries", () => {
     ]) {
       expect(orderTrackingPageSource).toContain(expectedFragment);
     }
+  });
+
+  it("keeps status history display safe, redacted and backed by public DTO fields only", () => {
+    for (const expectedFragment of [
+      "OrderTimeline history={order.statusHistory}",
+      "history: PublicOrderStatusHistoryDto[]",
+      "history.length === 0",
+      "history.map((event, index) => (",
+      "getOrderStatusLabel(event.status)",
+      "formatPublicOrderDateTime(event.createdAt)",
+      "event.note?.trim() || \"Sem observação pública para este evento.\"",
+    ]) {
+      expect(orderTrackingPageSource).toContain(expectedFragment);
+    }
+
+    expect(orderTrackingPageSource).not.toContain("event.changedById");
+    expect(orderTrackingPageSource).not.toContain("event.ownerId");
+    expect(orderTrackingPageSource).not.toContain("event.provider");
+    expect(orderTrackingPageSource).not.toContain("event.raw");
   });
 
   it("does not render private customer fields, provider state, internal ids, env keys or raw error details", () => {

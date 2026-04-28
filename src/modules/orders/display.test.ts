@@ -24,6 +24,7 @@ describe("public order display helpers", () => {
       ["READY_FOR_PICKUP", "Pronto para retirada"],
       ["OUT_FOR_DELIVERY", "Saiu para entrega"],
       ["DELIVERED", "Entregue"],
+      ["REJECTED", "Pedido recusado"],
       ["CANCELED", "Cancelado"],
     ]);
 
